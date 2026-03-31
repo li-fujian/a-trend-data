@@ -9,17 +9,17 @@ import java.util.function.Function;
 
 /**
  * 批量拉取K线，限速+重试+跳过fresh。
- * 每次请求后 sleep 300-500ms（随机），每50只额外 sleep 2s。
+ * 每次请求后 sleep 1500-2500ms（随机），每50只额外 sleep 5s。
  * 失败重试2次，全部完成后对失败列表补偿重跑一次。
  */
 public class BulkKLineFetcher {
 
     private static final int BATCH_SIZE = 50;
-    private static final int BATCH_PAUSE_MS = 2000;
-    private static final int MIN_SLEEP_MS = 300;
-    private static final int MAX_SLEEP_MS = 500;
+    private static final int BATCH_PAUSE_MS = 5000;
+    private static final int MIN_SLEEP_MS = 1500;
+    private static final int MAX_SLEEP_MS = 2500;
     private static final int RETRY_COUNT = 2;
-    private static final int RETRY_SLEEP_MS = 1000;
+    private static final int RETRY_SLEEP_MS = 3000;
 
     public enum Status { OK, SKIPPED, FAILED }
 
