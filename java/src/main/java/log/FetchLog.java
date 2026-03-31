@@ -53,11 +53,13 @@ public class FetchLog {
 
         // 保留最近 MAX_ENTRIES 条
         if (entries.size() > MAX_ENTRIES) {
-            entries = entries.subList(entries.size() - MAX_ENTRIES, entries.size());
+            entries = new ArrayList<>(entries.subList(entries.size() - MAX_ENTRIES, entries.size()));
         }
 
-        file.getParentFile().mkdirs();
-        try (FileWriter writer = new FileWriter(file)) {
+        File parent = file.getParentFile();
+        if (parent != null) parent.mkdirs();
+        try (OutputStreamWriter writer = new OutputStreamWriter(
+                new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8)) {
             GSON.toJson(entries, writer);
         }
     }
@@ -68,7 +70,8 @@ public class FetchLog {
     public static List<LogEntry> load(String logPath) throws IOException {
         File file = new File(logPath);
         if (!file.exists()) return new ArrayList<>();
-        try (FileReader reader = new FileReader(file)) {
+        try (java.io.InputStreamReader reader = new java.io.InputStreamReader(
+                new java.io.FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8)) {
             LogEntry[] arr = GSON.fromJson(reader, LogEntry[].class);
             return arr != null ? new ArrayList<>(Arrays.asList(arr)) : new ArrayList<>();
         }
