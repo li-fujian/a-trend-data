@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-03-31",
+    "started_at": "2026-03-31T20:20:48",
+    "finished_at": "2026-03-31T20:20:49",
+    "total": 1,
+    "ok": 1,
+    "skipped": 0,
+    "failed": 0,
+    "failed_symbols": []
+  }
+]

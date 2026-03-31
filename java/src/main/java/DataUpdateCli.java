@@ -47,10 +47,11 @@ public class DataUpdateCli {
         System.out.println("  -> " + stocks.size() + " stocks saved to " + universeFile);
 
         // Step 2: 批量拉K线
-        System.out.println("\n[Step 2] Fetching K-line data for " + stocks.size() + " symbols...");
         List<String> symbols = stocks.stream()
             .map(s -> s.symbol)
             .collect(Collectors.toList());
+        symbols = symbols.subList(0, Math.min(1, symbols.size()));
+        System.out.println("\n[Step 2] Fetching K-line data for " + symbols.size() + " symbols...");
         List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(symbols, cacheDir);
         BulkKLineFetcher.Summary summary = BulkKLineFetcher.buildSummary(results);
 

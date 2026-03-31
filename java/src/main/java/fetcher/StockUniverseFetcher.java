@@ -61,8 +61,13 @@ public class StockUniverseFetcher {
      */
     public static List<StockEntry> fetch() throws Exception {
         Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", "http://www.eastmoney.com");
-        headers.put("User-Agent", "Mozilla/5.0");
+        headers.put("Referer", "http://quote.eastmoney.com/");
+        headers.put("Origin", "http://quote.eastmoney.com");
+        headers.put("User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        headers.put("Accept", "*/*");
+        headers.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
 
         String json = HttpClientPool.getHttpClient().get(URL, headers);
         if (json == null || json.trim().isEmpty()) {
@@ -72,11 +77,23 @@ public class StockUniverseFetcher {
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject data = root.getAsJsonObject("data");
         if (data == null) throw new IOException("Unexpected response: missing 'data' field");
-        JsonArray diff = data.getAsJsonArray("diff");
-        if (diff == null) throw new IOException("Unexpected response: missing 'data.diff' field");
+
+        // diff 可能是 JsonArray 也可能是 JsonObject（东方财富偶尔切换格式）
+        JsonElement diffEl = data.get("diff");
+        if (diffEl == null) throw new IOException("Unexpected response: missing 'data.diff' field");
 
         List<StockEntry> result = new ArrayList<>();
-        for (JsonElement el : diff) {
+        Iterable<JsonElement> items;
+        if (diffEl.isJsonArray()) {
+            items = diffEl.getAsJsonArray();
+        } else {
+            // 以对象形式返回（键为 "0","1","2",...）
+            items = diffEl.getAsJsonObject().entrySet().stream()
+                .map(Map.Entry::getValue)
+                .collect(java.util.stream.Collectors.toList());
+        }
+
+        for (JsonElement el : items) {
             try {
                 JsonObject obj = el.getAsJsonObject();
                 String code = obj.get("f12").getAsString();
