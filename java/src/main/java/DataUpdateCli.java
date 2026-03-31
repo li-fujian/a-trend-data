@@ -50,7 +50,6 @@ public class DataUpdateCli {
         List<String> symbols = stocks.stream()
             .map(s -> s.symbol)
             .collect(Collectors.toList());
-        symbols = symbols.subList(0, Math.min(1, symbols.size()));
         System.out.println("\n[Step 2] Fetching K-line data for " + symbols.size() + " symbols...");
         List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(symbols, cacheDir);
         BulkKLineFetcher.Summary summary = BulkKLineFetcher.buildSummary(results);
