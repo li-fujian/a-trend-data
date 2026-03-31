@@ -32,7 +32,21 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 
 ---
 
-## 三、前置条件检查
+## 三、目录约定（重要）
+
+本仓库（`a-trend-data`）和策略仓库（`a-trend`）**必须放在同一父目录下**：
+
+```
+~/any-parent-dir/
+  ├── a-trend/        ← 策略仓库
+  └── a-trend-data/   ← 本仓库（数据仓库）
+```
+
+`a-trend` 的配置文件中 `cache_dir` 写的是 `../a-trend-data/cache/kline`，依赖这个相对路径。如果目录结构不对，策略仓库读不到数据。
+
+---
+
+## 四、前置条件检查
 
 运行前，请依次确认以下几点：
 
@@ -92,7 +106,7 @@ mvn compile -q -DskipTests
 
 ---
 
-## 四、运行程序
+## 五、运行程序
 
 ### 4.1 正式运行（约 45-90 分钟）
 
@@ -140,7 +154,7 @@ ls ~/cursorProjects/a-trend-data/cache/kline/ | wc -l
 
 ---
 
-## 五、常见问题处理
+## 六、常见问题处理
 
 ### 问题 1：新浪 K 线接口返回"拒绝访问"（限速）
 
@@ -185,7 +199,7 @@ git push
 
 ---
 
-## 六、文件结构说明
+## 七、文件结构说明
 
 ```
 a-trend-data/
@@ -207,7 +221,7 @@ a-trend-data/
 
 ---
 
-## 七、关键参数（如需调整）
+## 八、关键参数（如需调整）
 
 如果频繁被限速，可以修改 `BulkKLineFetcher.java` 中的常量：
 
@@ -226,7 +240,7 @@ mvn compile -q -DskipTests
 
 ---
 
-## 八、完整运行脚本（复制可直接执行）
+## 九、完整运行脚本（复制可直接执行）
 
 ```bash
 # 前置检查
