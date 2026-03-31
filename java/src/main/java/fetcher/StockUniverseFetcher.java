@@ -12,6 +12,7 @@ import java.util.*;
  */
 public class StockUniverseFetcher {
 
+    // pz=5000: A股上市公司约5300+，此值需确保覆盖全量；如超出需分页
     private static final String URL =
         "http://push2.eastmoney.com/api/qt/clist/get" +
         "?pn=1&pz=5000&fid=f6" +
@@ -42,7 +43,7 @@ public class StockUniverseFetcher {
     /** 是否为ST股 */
     public static boolean isST(String name) {
         if (name == null) return false;
-        return name.contains("ST") || name.contains("*ST");
+        return name.contains("ST");
     }
 
     /** 根据代码和市场编号构建 symbol */
@@ -69,18 +70,27 @@ public class StockUniverseFetcher {
         }
 
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-        JsonArray diff = root.getAsJsonObject("data").getAsJsonArray("diff");
+        JsonObject data = root.getAsJsonObject("data");
+        if (data == null) throw new IOException("Unexpected response: missing 'data' field");
+        JsonArray diff = data.getAsJsonArray("diff");
+        if (diff == null) throw new IOException("Unexpected response: missing 'data.diff' field");
 
         List<StockEntry> result = new ArrayList<>();
         for (JsonElement el : diff) {
-            JsonObject obj = el.getAsJsonObject();
-            String code = obj.get("f12").getAsString();
-            int market = obj.get("f13").getAsInt();
-            String name = obj.get("f14").getAsString();
-            long cap = obj.get("f20").getAsLong();
+            try {
+                JsonObject obj = el.getAsJsonObject();
+                String code = obj.get("f12").getAsString();
+                int market = obj.get("f13").getAsInt();
+                String name = obj.get("f14").getAsString();
+                JsonElement capEl = obj.get("f20");
+                if (capEl == null || capEl.isJsonNull()) continue;
+                long cap = capEl.getAsLong();
 
-            if (!isST(name) && isInRange(cap)) {
-                result.add(parseEntry(code, market, name, cap));
+                if (!isST(name) && isInRange(cap)) {
+                    result.add(parseEntry(code, market, name, cap));
+                }
+            } catch (Exception e) {
+                System.err.println("Skipping malformed entry: " + e.getMessage());
             }
         }
         return result;

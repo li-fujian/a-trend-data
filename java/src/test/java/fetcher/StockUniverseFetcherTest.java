@@ -36,10 +36,10 @@ public class StockUniverseFetcherTest {
     @Test
     public void testParseStockEntry() {
         StockUniverseFetcher.StockEntry entry =
-            StockUniverseFetcher.parseEntry("600519", 1, "贵州茅台", 2100000000000L);
+            StockUniverseFetcher.parseEntry("600519", 1, "贵州茅台", 50_000_000_000L);
         assertEquals("sh600519", entry.symbol);
         assertEquals("贵州茅台", entry.name);
-        assertEquals(2100000000000L, entry.marketCap);
+        assertEquals(50_000_000_000L, entry.marketCap);
     }
 
     @Rule
