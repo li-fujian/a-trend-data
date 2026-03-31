@@ -70,6 +70,7 @@ public class BulkKLineFetcher {
     public static List<FetchResult> fetchAll(List<String> symbols, String cacheDir,
                                               Function<String, List<DailyBar>> fetcher) {
         List<FetchResult> results = new ArrayList<>();
+        Map<String, Integer> symbolIndex = new HashMap<>();
         List<String> failed = new ArrayList<>();
         int total = symbols.size();
         Random rand = new Random();
@@ -78,6 +79,7 @@ public class BulkKLineFetcher {
             String symbol = symbols.get(i);
             FetchResult result = fetchWithRetry(symbol, cacheDir, fetcher, RETRY_COUNT);
             results.add(result);
+            symbolIndex.put(symbol, i);
             if (result.status == Status.FAILED) {
                 failed.add(symbol);
             }
@@ -98,18 +100,13 @@ public class BulkKLineFetcher {
         if (!failed.isEmpty()) {
             System.out.println("\n=== 补偿重跑 " + failed.size() + " 只失败标的 ===");
             sleep(BATCH_PAUSE_MS);
-            Random rand2 = new Random();
             for (String symbol : failed) {
                 FetchResult retry = fetchWithRetry(symbol, cacheDir, fetcher, RETRY_COUNT);
                 // 更新 results 中对应的条目
-                for (int i = 0; i < results.size(); i++) {
-                    if (results.get(i).symbol.equals(symbol)) {
-                        results.set(i, retry);
-                        break;
-                    }
-                }
+                Integer idx = symbolIndex.get(symbol);
+                if (idx != null) results.set(idx, retry);
                 System.out.printf("  补偿 %-12s %s%n", symbol, retry.status);
-                sleep(MIN_SLEEP_MS + rand2.nextInt(MAX_SLEEP_MS - MIN_SLEEP_MS + 1));
+                sleep(MIN_SLEEP_MS + rand.nextInt(MAX_SLEEP_MS - MIN_SLEEP_MS + 1));
             }
         }
 
@@ -139,6 +136,8 @@ public class BulkKLineFetcher {
     }
 
     private static void sleep(int ms) {
-        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+        try { Thread.sleep(ms); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

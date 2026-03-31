@@ -67,4 +67,50 @@ public class BulkKLineFetcherTest {
         assertEquals(1, summary.failed);
         assertEquals(Collections.singletonList("sz000001"), summary.failedSymbols);
     }
+
+    @Test
+    public void testFetchAllRetryOnFailure() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        // fetcher 第一次失败，第二次成功（模拟重试成功）
+        final int[] callCount = {0};
+        DailyBar bar = new DailyBar();
+        bar.setDate("2026-03-31");
+        bar.setClose(100.0);
+
+        List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(
+            Collections.singletonList("sh600519"),
+            cacheDir,
+            symbol -> {
+                callCount[0]++;
+                if (callCount[0] < 2) return Collections.emptyList(); // 第一次失败
+                return Collections.singletonList(bar); // 第二次成功
+            }
+        );
+
+        assertEquals(1, results.size());
+        assertEquals(BulkKLineFetcher.Status.OK, results.get(0).status);
+    }
+
+    @Test
+    public void testFetchAllCompensationPass() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        // fetcher 前3次（原始+2次重试）全部失败，第4次（补偿轮）成功
+        final int[] callCount = {0};
+        DailyBar bar = new DailyBar();
+        bar.setDate("2026-03-31");
+        bar.setClose(100.0);
+
+        List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(
+            Collections.singletonList("sh600519"),
+            cacheDir,
+            symbol -> {
+                callCount[0]++;
+                if (callCount[0] <= 3) return Collections.emptyList(); // 前3次失败
+                return Collections.singletonList(bar); // 第4次成功
+            }
+        );
+
+        assertEquals(1, results.size());
+        assertEquals(BulkKLineFetcher.Status.OK, results.get(0).status);
+    }
 }
