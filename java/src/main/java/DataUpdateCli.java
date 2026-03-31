@@ -38,7 +38,7 @@ public class DataUpdateCli {
         System.out.println("Repo root: " + repoRoot);
 
         String startedAt = LocalDateTime.now().format(DT_FMT);
-        String today = startedAt.substring(0, 10);
+        String today = java.time.LocalDate.now().toString();
 
         // Step 1: 拉取股票列表
         System.out.println("\n[Step 1] Fetching stock universe from eastmoney...");
@@ -83,7 +83,11 @@ public class DataUpdateCli {
             if ("--repo-root".equals(args[i])) return args[i + 1];
         }
         // 默认：java/ 目录的父目录（即 a-trend-data/）
-        return new File("..").getAbsolutePath();
+        try {
+            return new File("..").getCanonicalPath();
+        } catch (java.io.IOException e) {
+            return new File("..").getAbsolutePath();
+        }
     }
 
     /** Java 8 compatible replacement for InputStream.readAllBytes() (Java 9+). */
@@ -98,22 +102,30 @@ public class DataUpdateCli {
     }
 
     private static void gitPush(String repoRoot, String date) throws Exception {
-        String[] commands = {
-            "git -C " + repoRoot + " add .",
-            "git -C " + repoRoot + " commit -m \"data: " + date + "\"",
-            "git -C " + repoRoot + " push"
+        String[][] commands = {
+            {"git", "-C", repoRoot, "add", "."},
+            {"git", "-C", repoRoot, "commit", "-m", "data: " + date},
+            {"git", "-C", repoRoot, "push"}
         };
-        for (String cmd : commands) {
-            System.out.println("  $ " + cmd);
-            Process p = Runtime.getRuntime().exec(cmd.split(" "));
+        boolean[] allowNonZero = {false, true, false}; // commit 允许非零（nothing to commit）
+
+        for (int i = 0; i < commands.length; i++) {
+            String cmdStr = String.join(" ", commands[i]);
+            System.out.println("  $ " + cmdStr);
+
+            ProcessBuilder pb = new ProcessBuilder(commands[i]);
+            pb.redirectErrorStream(true); // 合并 stderr 到 stdout，避免缓冲区死锁
+            Process p = pb.start();
+
+            // 先读输出，再等待进程退出，避免管道缓冲区满导致死锁
+            String output = new String(readAllBytes(p.getInputStream()),
+                java.nio.charset.StandardCharsets.UTF_8);
             int exit = p.waitFor();
-            String out = new String(readAllBytes(p.getInputStream()));
-            String err = new String(readAllBytes(p.getErrorStream()));
-            if (!out.isEmpty()) System.out.println(out);
-            if (!err.isEmpty()) System.err.println(err);
-            // commit 可能返回 1（nothing to commit），不视为错误
-            if (exit != 0 && !cmd.contains("commit")) {
-                throw new RuntimeException("git command failed (exit " + exit + "): " + cmd);
+
+            if (!output.isEmpty()) System.out.println(output.trim());
+
+            if (exit != 0 && !allowNonZero[i]) {
+                throw new RuntimeException("git command failed (exit " + exit + "): " + cmdStr);
             }
         }
     }
