@@ -9,17 +9,20 @@ import java.util.function.Function;
 
 /**
  * 批量拉取K线，限速+重试+跳过fresh。
- * 每次请求后 sleep 1500-2500ms（随机），每50只额外 sleep 5s。
- * 失败重试2次，全部完成后对失败列表补偿重跑一次。
+ * 每次请求后 sleep 2200-3800ms（随机），每50只额外 sleep 5s。
+ * 失败重试2次（指数退避），全部完成后对失败列表补偿重跑一次。
+ * 连续失败达到阈值时，执行额外冷却，降低被上游限流的概率。
  */
 public class BulkKLineFetcher {
 
     private static final int BATCH_SIZE = 50;
     private static final int BATCH_PAUSE_MS = 5000;
-    private static final int MIN_SLEEP_MS = 1500;
-    private static final int MAX_SLEEP_MS = 2500;
+    private static final int MIN_SLEEP_MS = 2200;
+    private static final int MAX_SLEEP_MS = 3800;
     private static final int RETRY_COUNT = 2;
-    private static final int RETRY_SLEEP_MS = 3000;
+    private static final int RETRY_BASE_SLEEP_MS = 6000;
+    private static final int FAILURE_STREAK_COOLDOWN_THRESHOLD = 5;
+    private static final int FAILURE_STREAK_COOLDOWN_MS = 45000;
 
     public enum Status { OK, SKIPPED, FAILED }
 
@@ -72,6 +75,7 @@ public class BulkKLineFetcher {
         List<FetchResult> results = new ArrayList<>();
         Map<String, Integer> symbolIndex = new HashMap<>();
         List<String> failed = new ArrayList<>();
+        int failureStreak = 0;
         int total = symbols.size();
         Random rand = new Random();
 
@@ -82,6 +86,9 @@ public class BulkKLineFetcher {
             symbolIndex.put(symbol, i);
             if (result.status == Status.FAILED) {
                 failed.add(symbol);
+                failureStreak++;
+            } else {
+                failureStreak = 0;
             }
 
             System.out.printf("[%4d/%d] %-12s %s%n", i + 1, total, symbol, result.status);
@@ -91,8 +98,13 @@ public class BulkKLineFetcher {
                 System.out.println("--- batch pause " + BATCH_PAUSE_MS + "ms ---");
                 sleep(BATCH_PAUSE_MS);
             } else if (result.status != Status.SKIPPED) {
-                // 单次请求间隔：300-500ms 随机
                 sleep(MIN_SLEEP_MS + rand.nextInt(MAX_SLEEP_MS - MIN_SLEEP_MS + 1));
+            }
+
+            if (failureStreak >= FAILURE_STREAK_COOLDOWN_THRESHOLD) {
+                System.out.println("--- failure streak cooldown " + FAILURE_STREAK_COOLDOWN_MS + "ms ---");
+                sleep(FAILURE_STREAK_COOLDOWN_MS);
+                failureStreak = 0;
             }
         }
 
@@ -119,7 +131,10 @@ public class BulkKLineFetcher {
         for (int attempt = 0; attempt <= maxRetry; attempt++) {
             FetchResult r = fetchOne(symbol, cacheDir, fetcher);
             if (r.status != Status.FAILED) return r;
-            if (attempt < maxRetry) sleep(RETRY_SLEEP_MS);
+            if (attempt < maxRetry) {
+                int backoff = RETRY_BASE_SLEEP_MS * (attempt + 1);
+                sleep(backoff);
+            }
         }
         return new FetchResult(symbol, Status.FAILED);
     }
