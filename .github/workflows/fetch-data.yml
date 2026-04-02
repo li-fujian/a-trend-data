@@ -1,0 +1,73 @@
+name: Scheduled Data Fetch
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Beijing time Mon-Fri 15:30 == UTC 07:30
+    - cron: '30 7 * * 1-5'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-fetch-master
+  cancel-in-progress: false
+
+jobs:
+  fetch-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout data repo (master)
+        uses: actions/checkout@v5
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Setup JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Checkout a-trend dependency repo
+        uses: actions/checkout@v5
+        with:
+          repository: li-fujian/a-trend
+          path: a-trend
+          # If private, set secret A_TREND_REPO_TOKEN; otherwise GitHub token works for public repo.
+          token: ${{ secrets.A_TREND_REPO_TOKEN || github.token }}
+          fetch-depth: 1
+
+      - name: Build and install a-trend jar into local Maven repo
+        run: |
+          cd a-trend
+          mvn -q -DskipTests package
+          mvn -q install:install-file \
+            -Dfile=target/a-trend-1.0.0.jar \
+            -DgroupId=com.atrend \
+            -DartifactId=a-trend \
+            -Dversion=1.0.0 \
+            -Dpackaging=jar
+
+      - name: Compile and run updater
+        run: |
+          cd java
+          mvn -q -DskipTests compile
+          mvn -q exec:java -Dexec.mainClass=DataUpdateCli "-Dexec.args=--repo-root $GITHUB_WORKSPACE"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+            exit 0
+          fi
+
+          git commit -m "data: $(date -u +%F)"
+          git push origin HEAD:master
