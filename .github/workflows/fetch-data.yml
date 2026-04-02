@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout data repo (master)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
@@ -31,26 +31,6 @@ jobs:
           distribution: temurin
           java-version: '8'
           cache: maven
-
-      - name: Checkout a-trend dependency repo
-        uses: actions/checkout@v5
-        with:
-          repository: li-fujian/a-trend
-          path: a-trend
-          # If private, set secret A_TREND_REPO_TOKEN; otherwise GitHub token works for public repo.
-          token: ${{ secrets.A_TREND_REPO_TOKEN || github.token }}
-          fetch-depth: 1
-
-      - name: Build and install a-trend jar into local Maven repo
-        run: |
-          cd a-trend
-          mvn -q -DskipTests package
-          mvn -q install:install-file \
-            -Dfile=target/a-trend-1.0.0.jar \
-            -DgroupId=com.atrend \
-            -DartifactId=a-trend \
-            -Dversion=1.0.0 \
-            -Dpackaging=jar
 
       - name: Compile and run updater
         run: |
