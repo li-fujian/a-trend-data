@@ -13,6 +13,9 @@ public class SinaKLineFetcher {
 
     private static final int FETCH_DAYS = 700;
 
+    /** Upper bound for {@code datalen}; Sina returns at most all available daily bars (~1.5k for newer indices). */
+    public static final int MAX_DATALEN = 5000;
+
     /**
      * Fetch daily bars for a symbol from Sina API.
      * Converts KLineBean list to DailyBar list.
@@ -21,7 +24,15 @@ public class SinaKLineFetcher {
      * @return list of daily bars, or empty list on error
      */
     public static List<DailyBar> fetch(String symbol) {
-        List<KLineBean> klineBeans = fetchKLineWithDays(symbol, FETCH_DAYS);
+        return fetch(symbol, FETCH_DAYS);
+    }
+
+    /**
+     * Same as {@link #fetch(String)} with explicit Sina {@code datalen} (max bars requested per call).
+     */
+    public static List<DailyBar> fetch(String symbol, int datalen) {
+        int n = Math.max(1, Math.min(datalen, MAX_DATALEN));
+        List<KLineBean> klineBeans = fetchKLineWithDays(symbol, n);
 
         if (klineBeans == null || klineBeans.isEmpty()) {
             return new ArrayList<>();

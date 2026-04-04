@@ -3,10 +3,12 @@ import monitor.trendfollowing.SinaKLineFetcher;
 
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * 补拉指数日线到 cache/kline/（默认：上证指数 sh000001、沪深300 sh000300）。
+ * 拉取主要指数日线到 cache/kline/。
+ * 默认标的：上证指数 sh000001、沪深300 sh000300、科创50 sh000688、创业板指 sz399006。
  *
  * <pre>
  * cd java
@@ -16,17 +18,28 @@ import java.util.List;
  */
 public class FetchIndicesCli {
 
+    /** 与 {@link DataUpdateCli} 每日任务一致的主要指数 */
+    public static final List<String> DAILY_INDEX_SYMBOLS =
+            Collections.unmodifiableList(Arrays.asList("sh000001", "sh000300", "sh000688", "sz399006"));
+
+    /**
+     * 拉取 {@link #DAILY_INDEX_SYMBOLS}；与股票共用 merge 缓存策略。
+     * 使用较大 datalen，便于首次落盘尽量长的历史、日常增量合并。
+     */
+    public static void fetchToCache(String cacheDir) {
+        for (String sym : DAILY_INDEX_SYMBOLS) {
+            BulkKLineFetcher.FetchResult r = BulkKLineFetcher.fetchOne(sym, cacheDir,
+                    s -> SinaKLineFetcher.fetch(s, SinaKLineFetcher.MAX_DATALEN));
+            System.out.println("  index " + sym + " -> " + r.status);
+        }
+    }
+
     public static void main(String[] args) {
         String repoRoot = resolveRepoRoot(args);
         String cacheDir = repoRoot + "/cache/kline";
-        List<String> symbols = Arrays.asList("sh000001", "sh000300");
         System.out.println("Repo: " + repoRoot);
         System.out.println("Cache: " + cacheDir);
-        for (String sym : symbols) {
-            BulkKLineFetcher.FetchResult r =
-                    BulkKLineFetcher.fetchOne(sym, cacheDir, SinaKLineFetcher::fetch);
-            System.out.println(sym + " -> " + r.status);
-        }
+        fetchToCache(cacheDir);
     }
 
     private static String resolveRepoRoot(String[] args) {
