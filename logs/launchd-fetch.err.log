@@ -30,3 +30,7 @@ Failed to fetch K-line for sh688515: java.lang.IllegalStateException: Expected B
 Failed to fetch K-line for sh688516: java.lang.IllegalStateException: Expected BEGIN_ARRAY but was STRING at line 1 column 1 path $
 Failed to fetch K-line for sh688516: java.lang.IllegalStateException: Expected BEGIN_ARRAY but was STRING at line 1 column 1 path $
 Failed to fetch K-line for sh688516: java.lang.IllegalStateException: Expected BEGIN_ARRAY but was STRING at line 1 column 1 path $
+四月 06, 2026 3:31:25 下午 org.apache.http.impl.execchain.RetryExec execute
+信息: I/O exception (java.net.SocketException) caught when processing request to {}->http://vip.stock.finance.sina.com.cn:80: Connection reset
+四月 06, 2026 3:31:25 下午 org.apache.http.impl.execchain.RetryExec execute
+信息: Retrying request to {}->http://vip.stock.finance.sina.com.cn:80
