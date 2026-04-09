@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 拉取主要指数日线到 cache/kline/。
- * 默认标的：上证指数 sh000001、沪深300 sh000300、科创50 sh000688、创业板指 sz399006。
+ * 默认标的：上证指数 sh000001、沪深300 sh000300、中证500 sh000905、科创50 sh000688、创业板指 sz399006。
  *
  * <pre>
  * cd java
@@ -20,7 +20,13 @@ public class FetchIndicesCli {
 
     /** 与 {@link DataUpdateCli} 每日任务一致的主要指数 */
     public static final List<String> DAILY_INDEX_SYMBOLS =
-            Collections.unmodifiableList(Arrays.asList("sh000001", "sh000300", "sh000688", "sz399006"));
+            Collections.unmodifiableList(Arrays.asList(
+                    "sh000001", // 上证指数
+                    "sh000300", // 沪深300
+                    "sh000905", // 中证500
+                    "sh000688", // 科创50
+                    "sz399006"  // 创业板指
+            ));
 
     /**
      * 拉取 {@link #DAILY_INDEX_SYMBOLS}；与股票共用 merge 缓存策略。

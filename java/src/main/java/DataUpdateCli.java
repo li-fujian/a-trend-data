@@ -13,10 +13,11 @@ import java.util.stream.Collectors;
 /**
  * 主入口：
  * 1. 拉取股票列表，写 config/stock-universe.json
- * 2. 拉上证 / 沪深300 / 科创50 / 创业板指，写 cache/kline/
+ * 2. 拉上证 / 沪深300 / 中证500 / 科创50 / 创业板指，写 cache/kline/
  * 3. 批量拉个股K线，写 cache/kline/
- * 4. 写日志 logs/fetch-log.json
- * 5. git add + commit + push
+ * 4. 个股完成后补抓一轮主要指数，尽量补齐当日日线
+ * 5. 写日志 logs/fetch-log.json
+ * 6. git add + commit + push
  *
  * 用法：
  *   mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
@@ -47,7 +48,7 @@ public class DataUpdateCli {
         StockUniverseFetcher.save(stocks, universeFile);
         System.out.println("  -> " + stocks.size() + " stocks saved to " + universeFile);
 
-        // Step 2: 主要指数（上证、沪深300、科创50、创业板指）
+        // Step 2: 主要指数（上证、沪深300、中证500、科创50、创业板指）
         System.out.println("\n[Step 2] Fetching daily index benchmarks...");
         FetchIndicesCli.fetchToCache(cacheDir);
 
@@ -65,8 +66,12 @@ public class DataUpdateCli {
             System.out.println("Failed: " + summary.failedSymbols);
         }
 
-        // Step 4: 写日志
-        System.out.println("\n[Step 4] Writing fetch log...");
+        // Step 4: 个股批量拉取后再补抓一次指数，降低收盘后数据延迟导致的缺口
+        System.out.println("\n[Step 4] Re-checking daily index benchmarks...");
+        FetchIndicesCli.fetchToCache(cacheDir);
+
+        // Step 5: 写日志
+        System.out.println("\n[Step 5] Writing fetch log...");
         String finishedAt = LocalDateTime.now().format(DT_FMT);
         FetchLog.LogEntry logEntry = new FetchLog.LogEntry(
             today, startedAt, finishedAt,
@@ -76,8 +81,8 @@ public class DataUpdateCli {
         FetchLog.append(logFile, logEntry);
         System.out.println("  -> Log written to " + logFile);
 
-        // Step 5: git push
-        System.out.println("\n[Step 5] Git commit and push...");
+        // Step 6: git push
+        System.out.println("\n[Step 6] Git commit and push...");
         gitPush(repoRoot, today);
 
         System.out.println("\n=== Done ===");
