@@ -18,3 +18,4 @@ mvn compile -q -DskipTests
 mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
     "-Dexec.args=--repo-root $(cd ../.. && pwd)"
 ```
+
