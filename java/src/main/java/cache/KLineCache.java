@@ -22,6 +22,8 @@ import java.util.function.Function;
  * - Error handling: returns empty list on failure, logs to stderr
  */
 public class KLineCache {
+    public static final String ADJUSTMENT = "qfq";
+
     private final String cacheDir;
     private final Gson gson;
 
@@ -68,6 +70,7 @@ public class KLineCache {
         File cacheFile = new File(dir, symbol + ".json");
         CacheFile cf = new CacheFile();
         cf.symbol = symbol;
+        cf.adjustment = ADJUSTMENT;
 
         // Determine last_updated from last bar's date
         cf.last_updated = bars.get(bars.size() - 1).getDate();
@@ -125,7 +128,9 @@ public class KLineCache {
 
         try (FileReader reader = new FileReader(cacheFile)) {
             CacheFile cf = gson.fromJson(reader, CacheFile.class);
-            return cf != null && today.equals(cf.last_updated);
+            return cf != null
+                && today.equals(cf.last_updated)
+                && ADJUSTMENT.equals(cf.adjustment);
         } catch (Exception e) {
             System.err.println("Failed to check freshness for " + symbol + ": " + e.getMessage());
             return false;
@@ -203,6 +208,7 @@ public class KLineCache {
      */
     static class CacheFile {
         String symbol;
+        String adjustment;
         String last_updated;
         List<DailyBar> bars;
     }

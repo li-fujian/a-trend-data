@@ -6,7 +6,7 @@
 
 ## 一、你的任务
 
-运行数据更新程序，拉取全量 A 股 K 线数据，推送到 GitHub。
+运行数据更新程序，拉取全量 A 股前复权 K 线数据，推送到 GitHub。
 
 **一句话流程：**
 ```bash
@@ -28,7 +28,7 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 | 未拉取 | 约 2682 只（sh601xxx 后半段 + 全部 sz 开头） |
 | GitHub 仓库 | https://github.com/li-fujian/a-trend-data |
 
-**断点续跑说明：** 程序会自动跳过当天已更新的缓存（`isFresh` 检查）。**但跨天不会跳过**——第二天运行会重新拉取所有股票（已有缓存会做增量合并，不会丢数据，只是多花时间）。
+**断点续跑说明：** 程序会自动跳过当天已更新且 `adjustment=qfq` 的缓存（`isFresh` 检查）。**但跨天不会跳过**——第二天运行会重新拉取所有股票（已有缓存会做增量合并，不会丢数据，只是多花时间）。旧的未复权缓存没有 `adjustment` 字段，会被视为非 fresh，下一次运行会自动重刷为前复权。
 
 ---
 
@@ -150,32 +150,32 @@ cat ~/cursorProjects/a-trend-data/logs/fetch-log.json
 ls ~/cursorProjects/a-trend-data/cache/kline/ | wc -l
 ```
 
-成功标准：`failed` 字段 < 50（少量失败是正常的，新浪偶发限速）。
+成功标准：`failed` 字段 < 50（少量失败是正常的，东方财富偶发限速或空响应）。
 
 ---
 
 ## 六、常见问题处理
 
-### 问题 1：新浪 K 线接口返回"拒绝访问"（限速）
+### 问题 1：东方财富 K 线接口返回空响应/拒绝访问（限速）
 
-**症状：** 大量连续 FAILED，错误是 `Expected BEGIN_ARRAY but was STRING`
+**症状：** 大量连续 FAILED，错误包含 `Failed to fetch qfq K-line`、空响应或连接关闭。
 
-**原因：** 请求频率过高，新浪封了 IP，通常 30-60 秒后自动解封。
+**原因：** 请求频率过高，东方财富临时限制当前出口，通常等待一段时间后恢复。
 
 **处理：**
 1. 停止程序（Ctrl+C）
 2. 等待 60 秒
 3. 测试接口是否恢复：
    ```bash
-   curl -s -H "Referer: http://finance.sina.com.cn" \
-     "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600519&scale=240&ma=no&datalen=3" | head -c 50
+   curl -L --compressed -sS -A "Mozilla/5.0" -e "https://quote.eastmoney.com/" \
+     "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.600519&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=3" | head -c 80
    ```
-   如果返回 `[{"day":` 开头的 JSON，说明已恢复，可以重新运行。
+   如果返回包含 `"klines"` 的 JSON，说明已恢复，可以重新运行。
 4. 重新运行程序（当天运行会跳过已拉取的，从断点继续）
 
 ### 问题 2：stock-universe.json 只有 1 只股票
 
-**原因：** 东方财富接口被封（历史遗留问题，已切换到新浪）。
+**原因：** 新浪股票列表接口被封或返回异常。
 
 **处理：** 确认使用的是最新代码（git pull），然后重新运行。
 
@@ -209,10 +209,12 @@ a-trend-data/
 │       ├── DataUpdateCli.java   # 主入口（你只需要运行这个）
 │       ├── fetcher/
 │       │   ├── StockUniverseFetcher.java  # 拉股票列表（新浪）
-│       │   └── BulkKLineFetcher.java      # 批量拉K线（新浪）
+│       │   └── BulkKLineFetcher.java      # 批量拉K线（东方财富前复权）
+│       ├── monitor/trendfollowing/
+│       │   └── EastmoneyQfqKLineFetcher.java # 东方财富前复权日线
 │       └── log/
 │           └── FetchLog.java    # 写日志
-├── cache/kline/                 # K线缓存，每只股票一个 JSON 文件
+├── cache/kline/                 # 前复权K线缓存，每只股票一个 JSON 文件
 ├── config/
 │   └── stock-universe.json      # 全量股票列表（每次运行自动更新）
 └── logs/

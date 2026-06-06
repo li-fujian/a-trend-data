@@ -1,5 +1,5 @@
 import fetcher.BulkKLineFetcher;
-import monitor.trendfollowing.SinaKLineFetcher;
+import monitor.trendfollowing.EastmoneyQfqKLineFetcher;
 
 import java.io.File;
 import java.util.Arrays;
@@ -35,7 +35,7 @@ public class FetchIndicesCli {
     public static void fetchToCache(String cacheDir) {
         for (String sym : DAILY_INDEX_SYMBOLS) {
             BulkKLineFetcher.FetchResult r = BulkKLineFetcher.fetchOne(sym, cacheDir,
-                    s -> SinaKLineFetcher.fetch(s, SinaKLineFetcher.MAX_DATALEN));
+                    s -> EastmoneyQfqKLineFetcher.fetch(s, EastmoneyQfqKLineFetcher.MAX_DATALEN));
             System.out.println("  index " + sym + " -> " + r.status);
         }
     }
