@@ -2,7 +2,7 @@ package fetcher;
 
 import cache.DailyBar;
 import cache.KLineCache;
-import monitor.trendfollowing.SinaKLineFetcher;
+import monitor.trendfollowing.EastmoneyQfqKLineFetcher;
 
 import java.util.*;
 import java.util.function.Function;
@@ -61,10 +61,10 @@ public class BulkKLineFetcher {
     }
 
     /**
-     * 批量拉取所有股票，带限速、重试、补偿重跑。使用真实 SinaKLineFetcher。
+     * 批量拉取所有股票，带限速、重试、补偿重跑。使用东方财富前复权日线。
      */
     public static List<FetchResult> fetchAll(List<String> symbols, String cacheDir) {
-        return fetchAll(symbols, cacheDir, SinaKLineFetcher::fetch);
+        return fetchAll(symbols, cacheDir, EastmoneyQfqKLineFetcher::fetch);
     }
 
     /**

@@ -13,10 +13,10 @@ public class StockUniverseFetcherTest {
         assertFalse(StockUniverseFetcher.isInRange(4_999_999_999L));
         // 50亿 → 保留
         assertTrue(StockUniverseFetcher.isInRange(5_000_000_000L));
-        // 5000亿 → 保留
-        assertTrue(StockUniverseFetcher.isInRange(500_000_000_000L));
-        // 5000亿以上 → 过滤
-        assertFalse(StockUniverseFetcher.isInRange(500_000_000_001L));
+        // 15000亿 → 保留
+        assertTrue(StockUniverseFetcher.isInRange(1_500_000_000_000L));
+        // 15000亿以上 → 过滤
+        assertFalse(StockUniverseFetcher.isInRange(1_500_000_000_001L));
     }
 
     @Test
