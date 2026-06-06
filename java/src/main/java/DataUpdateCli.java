@@ -52,10 +52,13 @@ public class DataUpdateCli {
         System.out.println("\n[Step 2] Fetching daily index benchmarks...");
         FetchIndicesCli.fetchToCache(cacheDir);
 
-        // Step 3: 批量拉个股K线
+        // Step 3: 批量拉个股K线（--only-sz 时只跑深市）
+        boolean onlySz = hasFlag(args, "--only-sz");
         List<String> symbols = stocks.stream()
             .map(s -> s.symbol)
+            .filter(s -> !onlySz || s.startsWith("sz"))
             .collect(Collectors.toList());
+        if (onlySz) System.out.println("  [--only-sz] 只处理深市，共 " + symbols.size() + " 只");
         System.out.println("\n[Step 3] Fetching K-line data for " + symbols.size() + " symbols...");
         List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(symbols, cacheDir);
         BulkKLineFetcher.Summary summary = BulkKLineFetcher.buildSummary(results);
@@ -81,11 +84,21 @@ public class DataUpdateCli {
         FetchLog.append(logFile, logEntry);
         System.out.println("  -> Log written to " + logFile);
 
-        // Step 6: git push
-        System.out.println("\n[Step 6] Git commit and push...");
-        gitPush(repoRoot, today);
+        // Step 6: git push（可用 --no-push 跳过）
+        boolean noPush = hasFlag(args, "--no-push");
+        if (noPush) {
+            System.out.println("\n[Step 6] Skipped (--no-push)");
+        } else {
+            System.out.println("\n[Step 6] Git commit and push...");
+            gitPush(repoRoot, today);
+        }
 
         System.out.println("\n=== Done ===");
+    }
+
+    private static boolean hasFlag(String[] args, String flag) {
+        for (String arg : args) if (flag.equals(arg)) return true;
+        return false;
     }
 
     private static String resolveRepoRoot(String[] args) {

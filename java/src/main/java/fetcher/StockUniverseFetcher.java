@@ -21,11 +21,11 @@ public class StockUniverseFetcher {
 
     // 市值范围：50亿 ~ 5000亿（单位：万元，50亿=50_0000万，5000亿=5000_0000万）
     static final long MIN_CAP_WAN = 50_0000L;   // 50亿（万元）
-    static final long MAX_CAP_WAN = 5000_0000L; // 5000亿（万元）
+    static final long MAX_CAP_WAN = 15000_0000L; // 15000亿（万元）
 
     // 兼容单位为元的旧接口（测试用）
     static final long MIN_CAP = 5_000_000_000L;
-    static final long MAX_CAP = 500_000_000_000L;
+    static final long MAX_CAP = 1_500_000_000_000L;
 
     public static class StockEntry {
         public String symbol;
@@ -82,10 +82,14 @@ public class StockUniverseFetcher {
 
                 JsonArray arr;
                 try {
-                    arr = JsonParser.parseString(json.trim()).getAsJsonArray();
+                    com.google.gson.stream.JsonReader jr =
+                        new com.google.gson.stream.JsonReader(new java.io.StringReader(json.trim()));
+                    jr.setLenient(true);
+                    arr = JsonParser.parseReader(jr).getAsJsonArray();
                 } catch (Exception e) {
                     System.err.println("Parse error on " + node + " page " + page + ": " + e.getMessage());
-                    break;
+                    page++;
+                    continue;
                 }
                 if (arr.size() == 0) break;
 
