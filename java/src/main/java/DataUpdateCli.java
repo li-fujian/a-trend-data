@@ -43,7 +43,7 @@ public class DataUpdateCli {
         String today = java.time.LocalDate.now().toString();
 
         // Step 1: 拉取股票列表
-        System.out.println("\n[Step 1] Fetching stock universe from eastmoney...");
+        System.out.println("\n[Step 1] Fetching stock universe from Sina (新浪)...");
         List<StockUniverseFetcher.StockEntry> stocks = StockUniverseFetcher.fetch();
         StockUniverseFetcher.save(stocks, universeFile);
         System.out.println("  -> " + stocks.size() + " stocks saved to " + universeFile);
