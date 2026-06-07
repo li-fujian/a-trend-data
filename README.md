@@ -195,5 +195,3 @@ mvn install:install-file \
 | 文档 | 用途 |
 |------|------|
 | [AGENT-HANDOFF.md](AGENT-HANDOFF.md) | AI Agent 接棒运行指南 |
-| [docs/release-latest-migration.md](docs/release-latest-migration.md) | Release 发布方案（归档参考） |
-| [docs/tencent-migration-review.md](docs/tencent-migration-review.md) | 腾讯 K 线迁移审阅记录（归档） |
