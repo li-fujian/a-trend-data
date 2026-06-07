@@ -1,6 +1,6 @@
 # 数据发布方案 — Release `latest`（归档）
 
-> **归档说明（2026-06-07）**：方案已落地。日常操作见 [README.md](../README.md)；Agent 接棒见 [AGENT-HANDOFF.md](../AGENT-HANDOFF.md)。  
+> **归档说明（2026-06-07）**：方案已落地并试发 Release。日常操作见 [README.md](../README.md)；Agent 接棒见 [AGENT-HANDOFF.md](../AGENT-HANDOFF.md)。  
 > 本文保留为设计决策与审阅记录，非日常运维手册。
 
 ---
@@ -103,24 +103,42 @@ git commit -m "chore: stop tracking kline cache in git"
 | 项 | 状态 |
 |----|------|
 | 发布/下载脚本 | ✅ |
+| Python 备用 `package-kline-bundle.py` / `publish-latest-release-api.py` | ✅ |
 | `.gitignore` | ✅ |
 | `DataUpdateCli` Step 6 | ✅ |
 | `fetch-data.yml` | ✅ |
 | README / AGENT-HANDOFF | ✅ |
-| `git rm -r --cached cache/` 并提交 | ⏳ 工作区已准备，待维护者 commit |
-| 首次 CI 或本机试发 Release | ⏳ 待 `gh` + `zstd` 环境验证 |
+| `git rm -r --cached cache/` 并提交 | ✅ commit `974328234` |
+| 首次 Release 试发 | ✅ [latest](https://github.com/li-fujian/a-trend-data/releases/tag/latest) |
 
-## 审阅记录（2026-06-07）
+## 审阅记录
 
-### 结论
+### 复审（2026-06-07 晚）
+
+| 维度 | 状态 |
+|------|------|
+| 方案与代码一致 | ✅ |
+| `mvn -q test` | ✅ |
+| 前复权全量（2026-06-07 本地跑批） | ✅ 3274 OK / 0 failed |
+| Git 停止跟踪 cache | ✅ `git ls-files cache/` → **0** |
+| GitHub Release `latest` | ✅ 附件 `kline-latest.tar.zst` **118 848 863 B**（~113 MiB），`sha256:68ca420f…` |
+| 仅保留 1 个 Release | ✅ API 仅返回 `latest` |
+| 本机 `gh`/`zstd` CLI | ❌ 仍缺；可用 Python 备用（`pip install zstandard`） |
+| 本机解压 round-trip | ⏭ 未测（本机 `dist/kline-latest.tar.zst` 不完整 ~101 MiB；无 `zstd` CLI） |
+| CI 定时任务（迁移后） | ⏳ 尚无 `974328234`+ 代码上的 success run；最近 #47 仍为旧 commit 且 cancelled |
+
+**Release 页：** https://github.com/li-fujian/a-trend-data/releases/tag/latest  
+**下载直链：** https://github.com/li-fujian/a-trend-data/releases/download/latest/kline-latest.tar.zst
+
+### 初审（2026-06-07 午）
 
 | 维度 | 状态 |
 |------|------|
 | 方案与代码一致 | ✅ |
 | `mvn -q test` | ✅ |
 | 前复权全量（2026-06-07） | ✅ 3274 OK / 0 failed |
-| Git 停止跟踪 cache | ⏳ staged，待 commit |
-| 本机 Release 端到端 | ⏳ 部分环境缺 `gh`/`zstd` |
+| Git 停止跟踪 cache | ~~⏳ staged~~ → 已在 `974328234` 完成 |
+| 本机 Release 端到端 | ~~⏳~~ → 已通过 Python/API 或他机发布 |
 
 ### 数据完整性备注
 

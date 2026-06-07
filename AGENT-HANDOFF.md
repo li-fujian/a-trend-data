@@ -38,8 +38,6 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 
 **fresh 策略：** 当天已更新且 `adjustment=qfq` 的缓存会被跳过（`isFresh`）。跨天会重新拉取并增量 merge。旧无 `adjustment` 字段的缓存视为 non-fresh，会整包替换为腾讯 qfq。
 
-**注意：** `DataUpdateCli` Step 1 日志仍打印 `from eastmoney`，实际实现为 `StockUniverseFetcher`（新浪接口）——以代码为准。
-
 ---
 
 ## 三、目录约定（与 a-trend 联调）
@@ -106,7 +104,7 @@ bash scripts/download-latest-release.sh --repo-root /path/to/a-trend-data
 
 ```
 === A-Trend Data Update ===
-[Step 1] Fetching stock universe from eastmoney...
+[Step 1] Fetching stock universe from Sina (新浪)...
   [sh_a] 第1页: 100条，累计过滤后 ...
   -> 3274 stocks saved to .../config/stock-universe.json
 [Step 2] Fetching daily index benchmarks...
