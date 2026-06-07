@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  * 3. 批量拉个股K线，写 cache/kline/
  * 4. 个股完成后补抓一轮主要指数，尽量补齐当日日线
  * 5. 写日志 logs/fetch-log.json
- * 6. git add + commit + push
+ * 6. 打包并发布 GitHub Release latest（--no-push 跳过）
  *
  * 用法：
  *   mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
@@ -84,13 +84,13 @@ public class DataUpdateCli {
         FetchLog.append(logFile, logEntry);
         System.out.println("  -> Log written to " + logFile);
 
-        // Step 6: git push（可用 --no-push 跳过）
+        // Step 6: 发布 GitHub Release latest（可用 --no-push 跳过）
         boolean noPush = hasFlag(args, "--no-push");
         if (noPush) {
             System.out.println("\n[Step 6] Skipped (--no-push)");
         } else {
-            System.out.println("\n[Step 6] Git commit and push...");
-            gitPush(repoRoot, today);
+            System.out.println("\n[Step 6] Publishing GitHub Release latest...");
+            publishLatestRelease(repoRoot);
         }
 
         System.out.println("\n=== Done ===");
@@ -124,32 +124,35 @@ public class DataUpdateCli {
         return buf.toByteArray();
     }
 
-    private static void gitPush(String repoRoot, String date) throws Exception {
-        String[][] commands = {
-            {"git", "-C", repoRoot, "add", "."},
-            {"git", "-C", repoRoot, "commit", "-m", "data: " + date},
-            {"git", "-C", repoRoot, "push"}
-        };
-        boolean[] allowNonZero = {false, true, false}; // commit 允许非零（nothing to commit）
+    private static void publishLatestRelease(String repoRoot) throws Exception {
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String scriptName = isWindows ? "publish-latest-release.ps1" : "publish-latest-release.sh";
+        File script = new File(repoRoot, "scripts/" + scriptName);
+        if (!script.isFile()) {
+            throw new RuntimeException("Publish script not found: " + script.getAbsolutePath());
+        }
 
-        for (int i = 0; i < commands.length; i++) {
-            String cmdStr = String.join(" ", commands[i]);
-            System.out.println("  $ " + cmdStr);
+        ProcessBuilder pb;
+        if (isWindows) {
+            pb = new ProcessBuilder(
+                    "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", script.getAbsolutePath(),
+                    "-RepoRoot", repoRoot
+            );
+        } else {
+            pb = new ProcessBuilder("bash", script.getAbsolutePath(), "--repo-root", repoRoot);
+        }
+        pb.redirectErrorStream(true);
+        pb.directory(new File(repoRoot));
+        Process p = pb.start();
 
-            ProcessBuilder pb = new ProcessBuilder(commands[i]);
-            pb.redirectErrorStream(true); // 合并 stderr 到 stdout，避免缓冲区死锁
-            Process p = pb.start();
-
-            // 先读输出，再等待进程退出，避免管道缓冲区满导致死锁
-            String output = new String(readAllBytes(p.getInputStream()),
+        String output = new String(readAllBytes(p.getInputStream()),
                 java.nio.charset.StandardCharsets.UTF_8);
-            int exit = p.waitFor();
+        int exit = p.waitFor();
 
-            if (!output.isEmpty()) System.out.println(output.trim());
-
-            if (exit != 0 && !allowNonZero[i]) {
-                throw new RuntimeException("git command failed (exit " + exit + "): " + cmdStr);
-            }
+        if (!output.isEmpty()) System.out.println(output.trim());
+        if (exit != 0) {
+            throw new RuntimeException("publish release failed (exit " + exit + ")");
         }
     }
 }

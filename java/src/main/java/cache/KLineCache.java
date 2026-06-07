@@ -72,10 +72,25 @@ public class KLineCache {
         cf.symbol = symbol;
         cf.adjustment = ADJUSTMENT;
 
-        // Determine last_updated from last bar's date
-        cf.last_updated = bars.get(bars.size() - 1).getDate();
+        List<DailyBar> sorted = new ArrayList<>(bars);
+        sorted.sort(new Comparator<DailyBar>() {
+            @Override
+            public int compare(DailyBar b1, DailyBar b2) {
+                String d1 = b1.getDate();
+                String d2 = b2.getDate();
+                if (d1 == null) return d2 == null ? 0 : -1;
+                if (d2 == null) return 1;
+                return d1.compareTo(d2);
+            }
+        });
 
-        cf.bars = bars;
+        cf.last_updated = sorted.stream()
+                .map(DailyBar::getDate)
+                .filter(Objects::nonNull)
+                .max(String::compareTo)
+                .orElseThrow(() -> new IllegalArgumentException("Bars must contain at least one dated bar"));
+
+        cf.bars = sorted;
 
         try (FileWriter writer = new FileWriter(cacheFile)) {
             gson.toJson(cf, writer);
@@ -147,12 +162,34 @@ public class KLineCache {
     public void refresh(String symbol, Function<String, List<DailyBar>> fetcher) {
         validateSymbol(symbol);
 
-        List<DailyBar> cached = load(symbol);
         List<DailyBar> fetched = fetcher.apply(symbol);
-        List<DailyBar> merged = mergeBars(cached, fetched);
+        if (fetched == null || fetched.isEmpty()) {
+            return;
+        }
 
-        if (!merged.isEmpty()) {
-            save(symbol, merged);
+        List<DailyBar> toSave = hasQfqAdjustment(symbol)
+            ? mergeBars(load(symbol), fetched)
+            : fetched;
+
+        save(symbol, toSave);
+    }
+
+    /**
+     * True when cache file exists and was written with forward-adjusted (qfq) prices.
+     */
+    boolean hasQfqAdjustment(String symbol) {
+        validateSymbol(symbol);
+
+        File cacheFile = new File(cacheDir, symbol + ".json");
+        if (!cacheFile.exists()) {
+            return false;
+        }
+
+        try (FileReader reader = new FileReader(cacheFile)) {
+            CacheFile cf = gson.fromJson(reader, CacheFile.class);
+            return cf != null && ADJUSTMENT.equals(cf.adjustment);
+        } catch (Exception e) {
+            return false;
         }
     }
 

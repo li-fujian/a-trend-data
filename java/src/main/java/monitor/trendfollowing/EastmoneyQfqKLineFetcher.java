@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * @deprecated Retained as fallback only; production uses {@link TencentQfqKLineFetcher}.
  * Fetches daily A-share K-lines from Eastmoney using forward-adjusted prices.
  *
  * <p>Eastmoney parameter {@code fqt=1} is 前复权. The kline payload is a comma-separated
@@ -22,6 +23,7 @@ import java.util.Map;
  * <p>Eastmoney volume is in hands. Cache historically stores Sina volume in shares, so this
  * adapter multiplies Eastmoney volume by 100 to keep downstream volume ratios and units stable.
  */
+@Deprecated
 public class EastmoneyQfqKLineFetcher {
 
     /** Large enough for full A-share history in the current research window. */

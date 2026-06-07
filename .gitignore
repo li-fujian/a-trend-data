@@ -1,3 +1,10 @@
 java/target/
 *.class
 .DS_Store
+
+# Runtime data (published via GitHub Release latest)
+/cache/
+/config/stock-universe.json
+/logs/fetch-log.json
+/dist/
+/*.tar.zst
