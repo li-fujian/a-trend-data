@@ -6,5 +6,6 @@ java/target/
 /cache/
 /config/stock-universe.json
 /logs/fetch-log.json
+/logs/cron/
 /dist/
 /*.tar.zst

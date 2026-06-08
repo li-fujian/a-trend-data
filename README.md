@@ -56,8 +56,8 @@ parent/
 | `cache/kline/` | 每只标的一个 JSON，前复权日线 | ❌（Release 分发） |
 | `config/stock-universe.json` | 全量股票池（市值过滤后） | ❌ |
 | `logs/fetch-log.json` | 每次拉取摘要 | ❌ |
+| `logs/cron/` | 云端定时任务日志 | ❌ |
 | `dist/kline-latest.tar.zst` | 发布前临时压缩包 | ❌ |
-| `.github/workflows/fetch-data.yml` | 定时 CI 拉取 + 发布 | ✅ |
 
 ---
 
@@ -67,7 +67,7 @@ parent/
 cd java
 mvn compile -q -DskipTests
 mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
-    "-Dexec.args=--repo-root $(cd .. && pwd)"
+    "-Dexec.args=--repo-root $(cd .. && pwd) --mode incremental"
 ```
 
 常用参数：
@@ -75,6 +75,12 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 | 参数 | 含义 |
 |------|------|
 | `--repo-root PATH` | 仓库根目录（默认 `java/` 的上一级） |
+| `--mode incremental` | 默认模式，只抓每只标的最近一段日 K，并与本地缓存 merge |
+| `--mode full` | 全量重建模式，抓腾讯可返回的最长历史 |
+| `--incremental-bars N` | 增量模式每只标的抓最近 N 根日 K，默认 420 |
+| `--max-failed-to-publish N` | 失败数超过 N 时不覆盖 Release，默认 20 |
+| `--min-fresh-to-publish N` | 当天成功更新为今日日期的标的少于 N 时不覆盖 Release，默认 1000 |
+| `--trading-days-only` | 周末直接跳过；法定节假日建议由 cron 或外部日历控制 |
 | `--no-push` | 跳过 Step 6，不发布 Release |
 | `--only-sz` | 仅拉取深市个股（调试/补跑） |
 
@@ -92,6 +98,47 @@ mvn -q exec:java -Dexec.mainClass=FetchIndicesCli \
 ```
 
 发布 Step 6 需要 `gh auth login`（或环境变量 `GH_TOKEN` / `GITHUB_TOKEN`）以及 `zstd`、`tar`。
+
+---
+
+## 腾讯云定时更新
+
+推荐在腾讯云 CVM 上持久保存 `cache/kline/`，每个交易日收盘后运行增量更新，成功后覆盖 GitHub Release `latest`。
+
+一次性准备：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git maven openjdk-8-jdk gh zstd tar
+gh auth login
+git clone https://github.com/li-fujian/a-trend-data.git /opt/a-trend-data
+```
+
+手动试跑：
+
+```bash
+cd /opt/a-trend-data
+bash scripts/daily_fetch.sh
+```
+
+cron 示例（北京时间工作日 17:00 运行）：
+
+```cron
+0 17 * * 1-5 A_TREND_DATA_REPO_ROOT=/opt/a-trend-data /bin/bash /opt/a-trend-data/scripts/daily_fetch.sh
+```
+
+可调环境变量：
+
+| 变量 | 默认值 | 含义 |
+|------|--------|------|
+| `A_TREND_FETCH_MODE` | `incremental` | `incremental` 或 `full` |
+| `A_TREND_INCREMENTAL_BARS` | `420` | 增量模式每只标的抓取的最近日 K 数 |
+| `A_TREND_MAX_FAILED_TO_PUBLISH` | `20` | 超过该失败数就不上传 Release |
+| `A_TREND_MIN_FRESH_TO_PUBLISH` | `1000` | 当天 fresh 标的少于该数量就不上传 Release |
+| `A_TREND_MIN_SLEEP_MS` / `A_TREND_MAX_SLEEP_MS` | `1200` / `2200` | 个股请求间随机等待 |
+| `A_TREND_NOTIFY_WEBHOOK` | 空 | 可选，任务成功/失败后 POST JSON 通知 |
+
+脚本会使用 `.daily-fetch.lock` 防止重复运行，并把日志写到 `logs/cron/daily-fetch-YYYY-MM-DD.log`。
 
 ---
 
@@ -177,7 +224,7 @@ mvn install:install-file \
 
 缓存 JSON 字段 `adjustment: "qfq"`。无该字段的旧缓存视为 non-fresh，下次运行整包替换。
 
-**CI**：`.github/workflows/fetch-data.yml` 工作日 UTC 07:30（北京时间 15:30）运行 `DataUpdateCli`，通过 `GH_TOKEN` 发布 Release，**不再 git push 数据文件**。
+**定时任务**：GitHub Actions 不再运行数据更新。生产建议使用腾讯云 CVM 上的 `scripts/daily_fetch.sh`，通过 cron 在收盘后增量更新并发布 Release。
 
 ---
 

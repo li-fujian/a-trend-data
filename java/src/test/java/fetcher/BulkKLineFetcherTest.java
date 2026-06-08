@@ -84,7 +84,8 @@ public class BulkKLineFetcherTest {
                 callCount[0]++;
                 if (callCount[0] < 2) return Collections.emptyList(); // 第一次失败
                 return Collections.singletonList(bar); // 第二次成功
-            }
+            },
+            fastOptions()
         );
 
         assertEquals(1, results.size());
@@ -107,10 +108,20 @@ public class BulkKLineFetcherTest {
                 callCount[0]++;
                 if (callCount[0] <= 3) return Collections.emptyList(); // 前3次失败
                 return Collections.singletonList(bar); // 第4次成功
-            }
+            },
+            fastOptions()
         );
 
         assertEquals(1, results.size());
         assertEquals(BulkKLineFetcher.Status.OK, results.get(0).status);
+    }
+
+    private BulkKLineFetcher.FetchOptions fastOptions() {
+        BulkKLineFetcher.FetchOptions options = BulkKLineFetcher.FetchOptions.defaults()
+            .withSleepRange(0, 0);
+        options.batchPauseMs = 0;
+        options.retryBaseSleepMs = 0;
+        options.failureStreakCooldownMs = 0;
+        return options;
     }
 }

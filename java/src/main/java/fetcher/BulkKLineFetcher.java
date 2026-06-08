@@ -16,9 +16,9 @@ import java.util.function.Function;
 public class BulkKLineFetcher {
 
     private static final int BATCH_SIZE = 50;
-    private static final int BATCH_PAUSE_MS = 5000;
-    private static final int MIN_SLEEP_MS = 2200;
-    private static final int MAX_SLEEP_MS = 3800;
+    private static final int BATCH_PAUSE_MS = 3000;
+    private static final int MIN_SLEEP_MS = 1200;
+    private static final int MAX_SLEEP_MS = 2200;
     private static final int RETRY_COUNT = 2;
     private static final int RETRY_BASE_SLEEP_MS = 6000;
     private static final int FAILURE_STREAK_COOLDOWN_THRESHOLD = 5;
@@ -41,6 +41,27 @@ public class BulkKLineFetcher {
         public int skipped;
         public int failed;
         public List<String> failedSymbols;
+    }
+
+    public static class FetchOptions {
+        public int batchSize = BATCH_SIZE;
+        public int batchPauseMs = BATCH_PAUSE_MS;
+        public int minSleepMs = MIN_SLEEP_MS;
+        public int maxSleepMs = MAX_SLEEP_MS;
+        public int retryCount = RETRY_COUNT;
+        public int retryBaseSleepMs = RETRY_BASE_SLEEP_MS;
+        public int failureStreakCooldownThreshold = FAILURE_STREAK_COOLDOWN_THRESHOLD;
+        public int failureStreakCooldownMs = FAILURE_STREAK_COOLDOWN_MS;
+
+        public static FetchOptions defaults() {
+            return new FetchOptions();
+        }
+
+        public FetchOptions withSleepRange(int minMs, int maxMs) {
+            this.minSleepMs = Math.max(0, minMs);
+            this.maxSleepMs = Math.max(this.minSleepMs, maxMs);
+            return this;
+        }
     }
 
     /**
@@ -72,6 +93,22 @@ public class BulkKLineFetcher {
      */
     public static List<FetchResult> fetchAll(List<String> symbols, String cacheDir,
                                               Function<String, List<DailyBar>> fetcher) {
+        return fetchAll(symbols, cacheDir, fetcher, FetchOptions.defaults());
+    }
+
+    public static List<FetchResult> fetchAll(List<String> symbols, String cacheDir,
+                                              Function<String, List<DailyBar>> fetcher,
+                                              FetchOptions options) {
+        if (options == null) {
+            options = FetchOptions.defaults();
+        }
+        options.batchSize = Math.max(1, options.batchSize);
+        options.retryCount = Math.max(0, options.retryCount);
+        options.retryBaseSleepMs = Math.max(0, options.retryBaseSleepMs);
+        options.batchPauseMs = Math.max(0, options.batchPauseMs);
+        options.failureStreakCooldownThreshold = Math.max(1, options.failureStreakCooldownThreshold);
+        options.failureStreakCooldownMs = Math.max(0, options.failureStreakCooldownMs);
+
         List<FetchResult> results = new ArrayList<>();
         Map<String, Integer> symbolIndex = new HashMap<>();
         List<String> failed = new ArrayList<>();
@@ -81,7 +118,7 @@ public class BulkKLineFetcher {
 
         for (int i = 0; i < total; i++) {
             String symbol = symbols.get(i);
-            FetchResult result = fetchWithRetry(symbol, cacheDir, fetcher, RETRY_COUNT);
+            FetchResult result = fetchWithRetry(symbol, cacheDir, fetcher, options.retryCount, options.retryBaseSleepMs);
             results.add(result);
             symbolIndex.put(symbol, i);
             if (result.status == Status.FAILED) {
@@ -94,16 +131,16 @@ public class BulkKLineFetcher {
             System.out.printf("[%4d/%d] %-12s %s%n", i + 1, total, symbol, result.status);
 
             // 批间停顿
-            if ((i + 1) % BATCH_SIZE == 0 && i + 1 < total) {
-                System.out.println("--- batch pause " + BATCH_PAUSE_MS + "ms ---");
-                sleep(BATCH_PAUSE_MS);
+            if ((i + 1) % options.batchSize == 0 && i + 1 < total) {
+                System.out.println("--- batch pause " + options.batchPauseMs + "ms ---");
+                sleep(options.batchPauseMs);
             } else if (result.status != Status.SKIPPED) {
-                sleep(MIN_SLEEP_MS + rand.nextInt(MAX_SLEEP_MS - MIN_SLEEP_MS + 1));
+                sleep(randomSleepMs(rand, options));
             }
 
-            if (failureStreak >= FAILURE_STREAK_COOLDOWN_THRESHOLD) {
-                System.out.println("--- failure streak cooldown " + FAILURE_STREAK_COOLDOWN_MS + "ms ---");
-                sleep(FAILURE_STREAK_COOLDOWN_MS);
+            if (failureStreak >= options.failureStreakCooldownThreshold) {
+                System.out.println("--- failure streak cooldown " + options.failureStreakCooldownMs + "ms ---");
+                sleep(options.failureStreakCooldownMs);
                 failureStreak = 0;
             }
         }
@@ -111,14 +148,14 @@ public class BulkKLineFetcher {
         // 补偿重跑失败列表
         if (!failed.isEmpty()) {
             System.out.println("\n=== 补偿重跑 " + failed.size() + " 只失败标的 ===");
-            sleep(BATCH_PAUSE_MS);
+            sleep(options.batchPauseMs);
             for (String symbol : failed) {
-                FetchResult retry = fetchWithRetry(symbol, cacheDir, fetcher, RETRY_COUNT);
+                FetchResult retry = fetchWithRetry(symbol, cacheDir, fetcher, options.retryCount, options.retryBaseSleepMs);
                 // 更新 results 中对应的条目
                 Integer idx = symbolIndex.get(symbol);
                 if (idx != null) results.set(idx, retry);
                 System.out.printf("  补偿 %-12s %s%n", symbol, retry.status);
-                sleep(MIN_SLEEP_MS + rand.nextInt(MAX_SLEEP_MS - MIN_SLEEP_MS + 1));
+                sleep(randomSleepMs(rand, options));
             }
         }
 
@@ -127,12 +164,13 @@ public class BulkKLineFetcher {
 
     private static FetchResult fetchWithRetry(String symbol, String cacheDir,
                                                Function<String, List<DailyBar>> fetcher,
-                                               int maxRetry) {
+                                               int maxRetry,
+                                               int retryBaseSleepMs) {
         for (int attempt = 0; attempt <= maxRetry; attempt++) {
             FetchResult r = fetchOne(symbol, cacheDir, fetcher);
             if (r.status != Status.FAILED) return r;
             if (attempt < maxRetry) {
-                int backoff = RETRY_BASE_SLEEP_MS * (attempt + 1);
+                int backoff = retryBaseSleepMs * (attempt + 1);
                 sleep(backoff);
             }
         }
@@ -154,5 +192,12 @@ public class BulkKLineFetcher {
         try { Thread.sleep(ms); } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static int randomSleepMs(Random rand, FetchOptions options) {
+        if (options.maxSleepMs <= options.minSleepMs) {
+            return options.minSleepMs;
+        }
+        return options.minSleepMs + rand.nextInt(options.maxSleepMs - options.minSleepMs + 1);
     }
 }

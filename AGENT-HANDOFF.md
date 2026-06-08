@@ -7,7 +7,7 @@
 
 ## 一、你的任务
 
-运行 `DataUpdateCli`，拉取全量 A 股前复权 K 线 + 主要指数，打包并发布 Release `latest`。
+运行 `DataUpdateCli` 或 `scripts/daily_fetch.sh`，增量拉取 A 股前复权 K 线 + 主要指数，打包并发布 Release `latest`。生产环境建议放在腾讯云 CVM，用本地持久缓存降低每日耗时。
 
 **标准命令（Linux / macOS）：**
 
@@ -15,13 +15,27 @@
 cd /path/to/a-trend-data/java
 mvn compile -q -DskipTests
 mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
-    "-Dexec.args=--repo-root $(cd .. && pwd)"
+    "-Dexec.args=--repo-root $(cd .. && pwd) --mode incremental"
+```
+
+**腾讯云定时脚本：**
+
+```bash
+cd /path/to/a-trend-data
+bash scripts/daily_fetch.sh
+```
+
+cron 示例（北京时间工作日 17:00）：
+
+```cron
+0 17 * * 1-5 A_TREND_DATA_REPO_ROOT=/path/to/a-trend-data /bin/bash /path/to/a-trend-data/scripts/daily_fetch.sh
 ```
 
 **只拉不发布：** 加 `--no-push`  
 **只补深市：** 加 `--only-sz`
+**全量重建：** 加 `--mode full`
 
-完成后检查 `logs/fetch-log.json` 中 `failed` 是否可接受（< 50 通常正常）。
+完成后检查 `logs/fetch-log.json` 中 `failed` 是否可接受。默认 `--max-failed-to-publish=20`，超过阈值会写日志但不覆盖 GitHub Release；默认 `--min-fresh-to-publish=1000`，如果今日 fresh 标的太少，也不会覆盖 Release。
 
 ---
 
@@ -31,12 +45,12 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 |------|------|
 | 股票池规模 | 约 3274 只（`config/stock-universe.json`，每次 Step 1 刷新） |
 | 数据源 | 列表：新浪；K 线：腾讯财经 qfq |
-| 最近全量跑批 | 2026-06-07：`3274 OK / 0 failed` |
+| 最近全量跑批 | 2026-06-08：`3210 OK / 0 failed` |
 | 数据分发 | GitHub Release tag `latest`，附件 `kline-latest.tar.zst` |
 | Git 跟踪 | `cache/`、`config/stock-universe.json`、`logs/fetch-log.json` 已 `.gitignore`，不再 commit JSON |
 | 仓库 | https://github.com/li-fujian/a-trend-data |
 
-**fresh 策略：** 当天已更新且 `adjustment=qfq` 的缓存会被跳过（`isFresh`）。跨天会重新拉取并增量 merge。旧无 `adjustment` 字段的缓存视为 non-fresh，会整包替换为腾讯 qfq。
+**fresh 策略：** 当天已更新且 `adjustment=qfq` 的缓存会被跳过（`isFresh`）。跨天默认只抓最近 420 根日 K 并 merge。旧无 `adjustment` 字段的缓存视为 non-fresh，会用本次抓到的数据替换为腾讯 qfq。
 
 ---
 
@@ -73,7 +87,7 @@ ls ~/.m2/repository/com/atrend/a-trend/1.0.0/a-trend-1.0.0.jar
 
 ```bash
 gh auth status    # 本地
-# CI 使用 GH_TOKEN / GITHUB_TOKEN
+# 云端也可使用 GH_TOKEN / GITHUB_TOKEN
 command -v zstd && command -v tar
 ```
 
@@ -95,10 +109,10 @@ bash scripts/download-latest-release.sh --repo-root /path/to/a-trend-data
 |------|------|
 | 1 | 新浪拉股票列表 → `config/stock-universe.json` |
 | 2 | 5 只主要指数 → `cache/kline/` |
-| 3 | 腾讯 qfq 批量拉个股（限速 + 失败补偿） |
+| 3 | 腾讯 qfq 批量拉个股（默认增量 + 限速 + 失败补偿） |
 | 4 | 指数二次补抓 |
 | 5 | 写 `logs/fetch-log.json` |
-| 6 | 打包 `dist/kline-latest.tar.zst` 并 `gh release upload latest`（`--no-push` 跳过） |
+| 6 | 失败数不超过阈值时，打包 `dist/kline-latest.tar.zst` 并 `gh release upload latest`（`--no-push` 跳过） |
 
 **正常输出片段：**
 
@@ -117,7 +131,7 @@ bash scripts/download-latest-release.sh --repo-root /path/to/a-trend-data
 === Done ===
 ```
 
-**耗时：** 全量约 45–90 分钟（视网络与 fresh 跳过数量而定）。
+**耗时：** 腾讯云增量通常显著短于全量；全量重建仍可能需要 1–3 小时，取决于网络和限速参数。
 
 **验证：**
 
