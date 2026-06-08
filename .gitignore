@@ -1,6 +1,9 @@
 java/target/
 *.class
 .DS_Store
+._*
+**/._*
+.daily-fetch.lock
 
 # Runtime data (published via GitHub Release latest)
 /cache/
