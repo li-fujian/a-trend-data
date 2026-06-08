@@ -27,11 +27,21 @@ if (-not (Test-Path $KlineDir)) {
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 
 Write-Output "==> Packaging $ArchivePath"
+Remove-Item -Force -ErrorAction SilentlyContinue $ArchivePath
 Push-Location $RepoRoot
 try {
     tar -cf - cache/kline config/stock-universe.json logs/fetch-log.json | zstd -T0 -19 -o $ArchivePath
 } finally {
     Pop-Location
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "Packaging failed"
+}
+
+Write-Output "==> Verifying archive"
+zstd -q -t $ArchivePath
+if ($LASTEXITCODE -ne 0) {
+    throw "Archive verification failed: $ArchivePath"
 }
 
 $Repo = gh repo view --json nameWithOwner -q .nameWithOwner

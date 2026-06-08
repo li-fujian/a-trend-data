@@ -44,8 +44,12 @@ mkdir -p "$DIST_DIR"
 cd "$REPO_ROOT"
 
 echo "==> Packaging ${ARCHIVE_PATH}"
+rm -f "$ARCHIVE_PATH"
 tar -C "$REPO_ROOT" -cf - cache/kline config/stock-universe.json logs/fetch-log.json \
   | zstd -T0 -19 -o "$ARCHIVE_PATH"
+
+echo "==> Verifying archive"
+zstd -q -t "$ARCHIVE_PATH"
 
 echo "==> Ensuring release ${RELEASE_TAG}"
 if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

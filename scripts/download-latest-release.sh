@@ -43,6 +43,9 @@ gh release download "$RELEASE_TAG" \
   --dir "$DIST_DIR" \
   --clobber
 
+echo "==> Verifying archive"
+zstd -q -t "$ARCHIVE_PATH"
+
 echo "==> Extracting to ${REPO_ROOT}"
 zstd -d -c "$ARCHIVE_PATH" | tar -xf - -C "$REPO_ROOT"
 

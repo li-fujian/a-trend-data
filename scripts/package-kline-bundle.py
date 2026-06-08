@@ -40,6 +40,11 @@ def main() -> None:
         cctx = zstd.ZstdCompressor(level=19, threads=0)
         with tar_path.open("rb") as src, out.open("wb") as dst:
             cctx.copy_stream(src, dst)
+        print("==> Verifying zstd frame...")
+        dctx = zstd.ZstdDecompressor()
+        with out.open("rb") as src, dctx.stream_reader(src) as reader:
+            while reader.read(1_048_576):
+                pass
         print(f"==> Wrote {out} ({out.stat().st_size / 1_048_576:.1f} MiB)")
     finally:
         tar_path.unlink(missing_ok=True)

@@ -27,7 +27,16 @@ gh release download $ReleaseTag `
     --dir $DistDir `
     --clobber
 
+Write-Output "==> Verifying archive"
+zstd -q -t $ArchivePath
+if ($LASTEXITCODE -ne 0) {
+    throw "Archive verification failed: $ArchivePath"
+}
+
 Write-Output "==> Extracting to $RepoRoot"
 zstd -d -c $ArchivePath | tar -xf - -C $RepoRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Extract failed"
+}
 
 Write-Output "==> Done"
