@@ -26,6 +26,7 @@ public class StockUniverseFetcher {
     // 兼容单位为元的旧接口（测试用）
     static final long MIN_CAP = 5_000_000_000L;
     static final long MAX_CAP = 1_500_000_000_000L;
+    private static final int MAX_CONSECUTIVE_PARSE_ERRORS = 3;
 
     public static class StockEntry {
         public String symbol;
@@ -75,6 +76,7 @@ public class StockUniverseFetcher {
         for (String node : new String[]{"sh_a", "sz_a"}) {
             int page = 1;
             int nodeTotal = 0;
+            int parseErrors = 0;
             while (true) {
                 String url = String.format(URL_TEMPLATE, page, node);
                 String json = HttpClientPool.getHttpClient().get(url, headers);
@@ -88,9 +90,15 @@ public class StockUniverseFetcher {
                     arr = JsonParser.parseReader(jr).getAsJsonArray();
                 } catch (Exception e) {
                     System.err.println("Parse error on " + node + " page " + page + ": " + e.getMessage());
+                    parseErrors++;
+                    if (parseErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
+                        throw new IOException("Sina stock universe returned invalid data for "
+                            + node + " after " + parseErrors + " consecutive pages");
+                    }
                     page++;
                     continue;
                 }
+                parseErrors = 0;
                 if (arr.size() == 0) break;
 
                 for (JsonElement el : arr) {

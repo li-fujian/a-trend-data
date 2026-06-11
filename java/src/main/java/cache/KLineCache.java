@@ -177,7 +177,7 @@ public class KLineCache {
     /**
      * True when cache file exists and was written with forward-adjusted (qfq) prices.
      */
-    boolean hasQfqAdjustment(String symbol) {
+    public boolean hasQfqAdjustment(String symbol) {
         validateSymbol(symbol);
 
         File cacheFile = new File(cacheDir, symbol + ".json");

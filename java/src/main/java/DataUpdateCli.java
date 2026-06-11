@@ -61,6 +61,7 @@ public class DataUpdateCli {
         int minFreshToPublish = intValueOf(args, "--min-fresh-to-publish", DEFAULT_MIN_FRESH_TO_PUBLISH);
         int minSleepMs = intValueOf(args, "--min-sleep-ms", 1200);
         int maxSleepMs = intValueOf(args, "--max-sleep-ms", 2200);
+        int workers = intValueOf(args, "--workers", 1);
 
         System.out.println("Mode: " + mode);
         if ("incremental".equals(mode)) {
@@ -68,12 +69,21 @@ public class DataUpdateCli {
         }
         System.out.println("Publish failure threshold: " + maxFailedToPublish);
         System.out.println("Publish fresh-symbol threshold: " + minFreshToPublish);
+        System.out.println("Workers: " + Math.max(1, workers));
 
         // Step 1: 拉取股票列表
         System.out.println("\n[Step 1] Fetching stock universe from Sina (新浪)...");
-        List<StockUniverseFetcher.StockEntry> stocks = StockUniverseFetcher.fetch();
-        StockUniverseFetcher.save(stocks, universeFile);
-        System.out.println("  -> " + stocks.size() + " stocks saved to " + universeFile);
+        List<StockUniverseFetcher.StockEntry> stocks;
+        try {
+            stocks = StockUniverseFetcher.fetch();
+            StockUniverseFetcher.save(stocks, universeFile);
+            System.out.println("  -> " + stocks.size() + " stocks saved to " + universeFile);
+        } catch (Exception e) {
+            System.out.println("  !! Sina stock universe fetch failed: " + e.getMessage());
+            System.out.println("  -> Falling back to local stock universe: " + universeFile);
+            stocks = StockUniverseFetcher.load(universeFile);
+            System.out.println("  -> " + stocks.size() + " stocks loaded from local cache");
+        }
 
         // Step 2: 主要指数（上证、沪深300、中证500、科创50、创业板指）
         System.out.println("\n[Step 2] Fetching daily index benchmarks...");
@@ -89,7 +99,8 @@ public class DataUpdateCli {
         System.out.println("\n[Step 3] Fetching K-line data for " + symbols.size() + " symbols...");
         Function<String, List<cache.DailyBar>> stockFetcher = resolveStockFetcher(mode, incrementalBars);
         BulkKLineFetcher.FetchOptions options = BulkKLineFetcher.FetchOptions.defaults()
-            .withSleepRange(minSleepMs, maxSleepMs);
+            .withSleepRange(minSleepMs, maxSleepMs)
+            .withWorkers(workers);
         List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(symbols, cacheDir, stockFetcher, options);
         BulkKLineFetcher.Summary summary = BulkKLineFetcher.buildSummary(results);
 

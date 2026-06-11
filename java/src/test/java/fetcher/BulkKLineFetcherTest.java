@@ -45,6 +45,42 @@ public class BulkKLineFetcherTest {
     }
 
     @Test
+    public void testFetchOneUsesIncrementalFetcherForQfqCache() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        KLineCache cache = new KLineCache(cacheDir);
+
+        DailyBar cached = new DailyBar();
+        cached.setDate("2026-06-08");
+        cached.setClose(100.0);
+        cache.save("sh600519", Collections.singletonList(cached));
+
+        final boolean[] fullCalled = {false};
+        final boolean[] incrementalCalled = {false};
+
+        DailyBar fetched = new DailyBar();
+        fetched.setDate("2026-06-09");
+        fetched.setClose(101.0);
+
+        BulkKLineFetcher.FetchResult result = BulkKLineFetcher.fetchOne(
+            "sh600519",
+            cacheDir,
+            symbol -> {
+                fullCalled[0] = true;
+                return Collections.emptyList();
+            },
+            symbol -> {
+                incrementalCalled[0] = true;
+                return Collections.singletonList(fetched);
+            }
+        );
+
+        assertEquals(BulkKLineFetcher.Status.OK, result.status);
+        assertFalse(fullCalled[0]);
+        assertTrue(incrementalCalled[0]);
+        assertEquals(2, cache.load("sh600519").size());
+    }
+
+    @Test
     public void testFetchFailsOnEmptyResponse() throws Exception {
         String cacheDir = tmp.getRoot().getAbsolutePath();
 
@@ -114,6 +150,27 @@ public class BulkKLineFetcherTest {
 
         assertEquals(1, results.size());
         assertEquals(BulkKLineFetcher.Status.OK, results.get(0).status);
+    }
+
+    @Test
+    public void testFetchAllParallelWorkers() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        DailyBar bar = new DailyBar();
+        bar.setDate("2026-03-31");
+        bar.setClose(100.0);
+
+        BulkKLineFetcher.FetchOptions options = fastOptions().withWorkers(3);
+        List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(
+            Arrays.asList("sh600519", "sh600036", "sz000001", "sz000002", "sh601318"),
+            cacheDir,
+            symbol -> Collections.singletonList(bar),
+            options
+        );
+
+        assertEquals(5, results.size());
+        for (BulkKLineFetcher.FetchResult result : results) {
+            assertEquals(BulkKLineFetcher.Status.OK, result.status);
+        }
     }
 
     private BulkKLineFetcher.FetchOptions fastOptions() {
