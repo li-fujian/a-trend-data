@@ -83,6 +83,7 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 | `--trading-days-only` | 周末直接跳过；法定节假日建议由 cron 或外部日历控制 |
 | `--no-push` | 跳过 Step 6，不发布 Release |
 | `--only-sz` | 仅拉取深市个股（调试/补跑） |
+| `--only-star` | 仅拉取科创板 / CDR（`sh688`/`sh689`），用于成交量口径重建 |
 
 本地只拉不发布：
 
@@ -219,10 +220,14 @@ mvn install:install-file \
 | 数据 | 接口 | 说明 |
 |------|------|------|
 | 股票列表 | 新浪 `Market_Center.getHQNodeData` | 市值 50 亿–1.5 万亿，排除 ST |
-| 个股 K 线 | 腾讯 `web.ifzq.gtimg.cn` | `qfq` 前复权；成交量手→股 ×100 |
+| 个股 K 线 | 腾讯 `web.ifzq.gtimg.cn` | `qfq` 前复权；缓存成交量一律为**股**。主板/创业板/B股接口单位是手，写入前 ×100；科创板 `sh688`/`sh689`（及北交所）接口已是股，**不再乘 100**。单位优先用同行情里的成交额反推，前缀规则兜底。 |
 | 指数 K 线 | 同上 | 5 只：上证、沪深300、中证500、科创50、创业板指 |
 
-缓存 JSON 字段 `adjustment: "qfq"`。无该字段的旧缓存视为 non-fresh，下次运行整包替换。
+缓存 JSON 字段：`adjustment: "qfq"`、`schema_version: 2`、`volume_unit: "shares"`。缺少版本标记的科创板旧缓存视为脏数据（历史成交量被放大 100 倍），下次运行会**整段全量重抓并替换**，不会和旧 bar merge。无 `adjustment` 的更旧缓存同样视为 non-fresh。
+
+写入前用 `close × volume / market_cap` 做换手率护栏：单日隐含换手 >200%，或近 20 根里有 ≥10 根超过 100%，拒写。这次科创板 100 倍错误会在第一天被拦住。
+
+下游若曾对 `sh688` 做 `volume * 0.01` 兜底，必须改成「仅当 `schema_version` 缺失且 `volume_unit` 不是 `shares` 时才修正」。否则上游修好后会除两次 100。
 
 **定时任务**：GitHub Actions 不再运行数据更新。生产建议使用腾讯云 CVM 上的 `scripts/daily_fetch.sh`，通过 cron 在收盘后增量更新并发布 Release。
 
@@ -231,9 +236,23 @@ mvn install:install-file \
 ## 数据口径与限制
 
 - 前复权（qfq）；腾讯早期段可能存在脏数据，解析时会丢弃 OHLC ≤ 0 的 bar，部分标的有效历史晚于上市日（如茅台约自 2016-06 起）。
+- 成交量口径：缓存为股。科创板申报单位是 1 股递增，腾讯日 K 对 `sh688`/`sh689` 直接返回股；其它板块返回手。北交所尚未进股票池，但同一规则已按 `bj` 前缀预留。
 - 北交所（`bj` 前缀）不在股票池内。
 - `cache/kline/` 可能含历史遗留 ETF 等额外 JSON；打包为**全目录快照**，不限于 `stock-universe.json` 内标的。
 - 2026-06-07 全量拉取参考：`total=3274`，`ok=3274`，`failed=0`（见 `logs/fetch-log.json`）。
+
+### 科创板成交量口径重建
+
+2026-08 前写入的 `sh688` 缓存把接口里的股又乘了 100，全历史都错。代码修复后，**下一次增量任务会自动全量重抓这些标的**（约 450 只，耗时明显高于普通增量）。不必先 `--mode full` 跑全市场。
+
+只重建科创板（不碰其它板块、默认也不该直接发布）：
+
+```bash
+mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
+  "-Dexec.args=--repo-root /path/to/a-trend-data --only-star --no-push"
+```
+
+修好的缓存应满足：`sh688256` 在 2026-08-20 的 `volume` 为 `14855370`（不是 `1485537000`）；`schema_version` 为 2。
 
 ---
 

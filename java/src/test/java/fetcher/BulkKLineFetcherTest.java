@@ -173,6 +173,64 @@ public class BulkKLineFetcherTest {
         }
     }
 
+    @Test
+    public void testLegacyStarUsesFullFetcher() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        java.io.File cacheFile = new java.io.File(tmp.getRoot(), "sh688256.json");
+        try (java.io.FileWriter writer = new java.io.FileWriter(cacheFile)) {
+            writer.write("{\"symbol\":\"sh688256\",\"adjustment\":\"qfq\","
+                    + "\"last_updated\":\"2026-08-19\","
+                    + "\"bars\":[{\"date\":\"2026-08-19\",\"close\":1050.0,\"volume\":1574639600}]}");
+        }
+
+        final boolean[] fullCalled = {false};
+        final boolean[] incrementalCalled = {false};
+        DailyBar fetched = new DailyBar();
+        fetched.setDate("2026-08-20");
+        fetched.setClose(1010.88);
+        fetched.setVolume(14_855_370.0);
+
+        BulkKLineFetcher.FetchResult result = BulkKLineFetcher.fetchOne(
+            "sh688256",
+            cacheDir,
+            symbol -> {
+                fullCalled[0] = true;
+                return Collections.singletonList(fetched);
+            },
+            symbol -> {
+                incrementalCalled[0] = true;
+                return Collections.emptyList();
+            }
+        );
+
+        assertEquals(BulkKLineFetcher.Status.OK, result.status);
+        assertTrue(fullCalled[0]);
+        assertFalse(incrementalCalled[0]);
+        KLineCache cache = new KLineCache(cacheDir);
+        assertEquals(1, cache.load("sh688256").size());
+        assertEquals(14_855_370.0, cache.load("sh688256").get(0).getVolume(), 0.0001);
+    }
+
+    @Test
+    public void testSanityRejectDoesNotWrite() throws Exception {
+        String cacheDir = tmp.getRoot().getAbsolutePath();
+        DailyBar bar = new DailyBar();
+        bar.setDate("2026-08-20");
+        bar.setClose(1010.88);
+        bar.setVolume(1_485_537_000.0);
+
+        BulkKLineFetcher.FetchResult result = BulkKLineFetcher.fetchOne(
+            "sh688256",
+            cacheDir,
+            symbol -> Collections.singletonList(bar),
+            symbol -> Collections.singletonList(bar),
+            650_864_000_000L
+        );
+
+        assertEquals(BulkKLineFetcher.Status.FAILED, result.status);
+        assertTrue(new KLineCache(cacheDir).load("sh688256").isEmpty());
+    }
+
     private BulkKLineFetcher.FetchOptions fastOptions() {
         BulkKLineFetcher.FetchOptions options = BulkKLineFetcher.FetchOptions.defaults()
             .withSleepRange(0, 0);

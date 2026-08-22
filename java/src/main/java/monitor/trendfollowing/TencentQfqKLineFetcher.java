@@ -1,6 +1,7 @@
 package monitor.trendfollowing;
 
 import cache.DailyBar;
+import cache.VolumeUnit;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -19,8 +20,10 @@ import java.util.Map;
  * Fetches daily A-share K-lines from Tencent Finance using forward-adjusted prices.
  *
  * <p>Endpoint: {@code web.ifzq.gtimg.cn/appstock/app/fqkline/get} with {@code qfq} adjust type.
- * Each bar is {@code [date, open, close, high, low, volume]}; stock volume is in lots (手),
- * multiplied by 100 to match cache units (shares).
+ * Each bar is {@code [date, open, close, high, low, volume]}. Cache volume is always shares.
+ * Tencent returns lots (手) for main board / ChiNext / B-shares, and shares for STAR
+ * ({@code sh688}/{@code sh689}) and BSE. Scaling is detected from the quote's
+ * volume+amount when present, otherwise from the board prefix.
  */
 public class TencentQfqKLineFetcher {
 
@@ -51,10 +54,15 @@ public class TencentQfqKLineFetcher {
 
         Map<String, DailyBar> byDate = new LinkedHashMap<>();
         String endDate = "";
+        Boolean scaleVolume = null;
 
         while (byDate.size() < target) {
             int requestSize = Math.min(chunk, target - byDate.size());
-            List<DailyBar> chunkBars = fetchChunk(symbol, "", endDate, requestSize);
+            ParsedChunk parsed = fetchChunk(symbol, "", endDate, requestSize, scaleVolume);
+            List<DailyBar> chunkBars = parsed.bars;
+            if (scaleVolume == null && parsed.scaleVolume != null) {
+                scaleVolume = parsed.scaleVolume;
+            }
             if (chunkBars.isEmpty()) {
                 break;
             }
@@ -83,7 +91,8 @@ public class TencentQfqKLineFetcher {
         return result;
     }
 
-    private static List<DailyBar> fetchChunk(String symbol, String startDate, String endDate, int count) {
+    private static ParsedChunk fetchChunk(String symbol, String startDate, String endDate,
+                                          int count, Boolean scaleOverride) {
         String url = String.format(URL, symbol, startDate, endDate, count);
 
         Map<String, String> headers = new HashMap<>();
@@ -92,17 +101,21 @@ public class TencentQfqKLineFetcher {
 
         try {
             String body = utils.HttpClientPool.getHttpClient().get(url, headers);
-            return parseResponse(symbol, body);
+            return parseResponse(symbol, body, scaleOverride);
         } catch (Exception e) {
             System.err.println("Failed to fetch qfq K-line for " + symbol + ": " + e.getMessage());
-            return new ArrayList<>();
+            return ParsedChunk.empty();
         }
     }
 
     static List<DailyBar> parseResponse(String symbol, String body) {
+        return parseResponse(symbol, body, null).bars;
+    }
+
+    static ParsedChunk parseResponse(String symbol, String body, Boolean scaleOverride) {
         List<DailyBar> bars = new ArrayList<>();
         if (body == null || body.trim().isEmpty()) {
-            return bars;
+            return new ParsedChunk(bars, resolveScale(symbol, null, scaleOverride));
         }
 
         String json = body.trim();
@@ -113,17 +126,17 @@ public class TencentQfqKLineFetcher {
 
         JsonObject root = new Gson().fromJson(json, JsonObject.class);
         if (root == null || !root.has("data")) {
-            return bars;
+            return new ParsedChunk(bars, resolveScale(symbol, null, scaleOverride));
         }
 
         JsonElement dataElem = root.get("data");
         if (dataElem == null || dataElem.isJsonArray()) {
-            return bars;
+            return new ParsedChunk(bars, resolveScale(symbol, null, scaleOverride));
         }
 
         JsonObject data = dataElem.getAsJsonObject();
         if (!data.has(symbol) || !data.get(symbol).isJsonObject()) {
-            return bars;
+            return new ParsedChunk(bars, resolveScale(symbol, null, scaleOverride));
         }
 
         JsonObject symbolData = data.getAsJsonObject(symbol);
@@ -134,18 +147,87 @@ public class TencentQfqKLineFetcher {
             rows = symbolData.getAsJsonArray("day");
         }
 
+        boolean scaleVolume = resolveScale(symbol, symbolData, scaleOverride);
         if (rows == null) {
-            return bars;
+            return new ParsedChunk(bars, scaleVolume);
         }
 
-        boolean scaleVolume = !isIndex(symbol);
         for (JsonElement row : rows) {
             DailyBar bar = parseBar(row, scaleVolume);
             if (bar != null) {
                 bars.add(bar);
             }
         }
-        return bars;
+        return new ParsedChunk(bars, scaleVolume);
+    }
+
+    static boolean resolveScale(String symbol, JsonObject symbolData, Boolean scaleOverride) {
+        if (VolumeUnit.isIndex(symbol)) {
+            return false;
+        }
+        if (scaleOverride != null) {
+            return scaleOverride;
+        }
+        Boolean detected = detectScaleFromQt(symbol, symbolData);
+        if (detected != null) {
+            return detected;
+        }
+        return VolumeUnit.shouldScaleLotsToShares(symbol);
+    }
+
+    static Boolean detectScaleFromQt(String symbol, JsonObject symbolData) {
+        if (symbolData == null || !symbolData.has("qt") || !symbolData.get("qt").isJsonObject()) {
+            return null;
+        }
+        JsonObject qt = symbolData.getAsJsonObject("qt");
+        if (!qt.has(symbol) || !qt.get(symbol).isJsonArray()) {
+            return null;
+        }
+        JsonArray fields = qt.getAsJsonArray(symbol);
+        Double price = fields.size() > 3 ? parseDouble(jsonString(fields.get(3))) : null;
+        Double volume = null;
+        Double amount = null;
+        for (int i = 0; i < fields.size(); i++) {
+            String raw = jsonString(fields.get(i));
+            if (raw == null) {
+                continue;
+            }
+            int first = raw.indexOf('/');
+            int last = raw.lastIndexOf('/');
+            if (first <= 0 || last <= first) {
+                continue;
+            }
+            String[] parts = raw.split("/");
+            if (parts.length != 3) {
+                continue;
+            }
+            Double p = parseDouble(parts[0]);
+            Double v = parseDouble(parts[1]);
+            Double a = parseDouble(parts[2]);
+            if (p == null || v == null || a == null) {
+                continue;
+            }
+            if (v > 0 && a > v) {
+                if (price == null) {
+                    price = p;
+                }
+                volume = v;
+                amount = a;
+                break;
+            }
+        }
+        return VolumeUnit.detectScaleFromQuote(price, volume, amount);
+    }
+
+    private static String jsonString(JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        try {
+            return element.getAsString();
+        } catch (Exception e) {
+            return element.toString();
+        }
     }
 
     static DailyBar parseBar(JsonElement row, boolean scaleVolume) {
@@ -203,11 +285,21 @@ public class TencentQfqKLineFetcher {
     }
 
     static boolean isIndex(String symbol) {
-        if (symbol == null) {
-            return false;
+        return VolumeUnit.isIndex(symbol);
+    }
+
+    static final class ParsedChunk {
+        final List<DailyBar> bars;
+        final Boolean scaleVolume;
+
+        ParsedChunk(List<DailyBar> bars, Boolean scaleVolume) {
+            this.bars = bars != null ? bars : new ArrayList<DailyBar>();
+            this.scaleVolume = scaleVolume;
         }
-        String lower = symbol.toLowerCase();
-        return lower.startsWith("sh000") || lower.startsWith("sz399");
+
+        static ParsedChunk empty() {
+            return new ParsedChunk(new ArrayList<DailyBar>(), null);
+        }
     }
 
     private static Double parseDouble(String str) {

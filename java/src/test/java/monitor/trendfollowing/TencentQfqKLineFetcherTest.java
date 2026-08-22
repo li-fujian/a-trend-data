@@ -118,5 +118,58 @@ public class TencentQfqKLineFetcherTest {
         assertTrue(TencentQfqKLineFetcher.isIndex("sh000001"));
         assertTrue(TencentQfqKLineFetcher.isIndex("sz399006"));
         assertFalse(TencentQfqKLineFetcher.isIndex("sh600519"));
+        assertFalse(TencentQfqKLineFetcher.isIndex("sh688256"));
+    }
+
+    @Test
+    public void testParseStarBoardDoesNotScaleVolume() {
+        String body = "kline_dayqfq={\"code\":0,\"data\":{\"sh688256\":{\"qfqday\":[["
+                + "\"2026-08-20\",\"1060.020\",\"1010.880\",\"1068.900\",\"995.000\",\"14855370.000\""
+                + "]]}}}";
+
+        List<DailyBar> bars = TencentQfqKLineFetcher.parseResponse("sh688256", body);
+        assertEquals(1, bars.size());
+        assertEquals(14_855_370.0, bars.get(0).getVolume(), 0.0001);
+    }
+
+    @Test
+    public void testParseStarCdrDoesNotScaleVolume() {
+        String body = "kline_dayqfq={\"code\":0,\"data\":{\"sh689009\":{\"qfqday\":[["
+                + "\"2026-08-21\",\"43.50\",\"43.60\",\"44.00\",\"43.00\",\"1000001.000\""
+                + "]]}}}";
+
+        List<DailyBar> bars = TencentQfqKLineFetcher.parseResponse("sh689009", body);
+        assertEquals(1, bars.size());
+        assertEquals(1_000_001.0, bars.get(0).getVolume(), 0.0001);
+    }
+
+    @Test
+    public void testParseQuoteDetectsShareVolumeForStar() {
+        String body = "kline_dayqfq={\"code\":0,\"data\":{\"sh688256\":{"
+                + "\"qfqday\":[[\"2026-08-21\",\"999.980\",\"1035.000\",\"1061.470\",\"996.000\",\"12033293.000\"]],"
+                + "\"qt\":{\"sh688256\":[\"1\",\"寒武纪\",\"688256\",\"1035.00\","
+                + "\"1010.88\",\"999.98\",\"12033293\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\","
+                + "\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\","
+                + "\"0\",\"0\",\"0\",\"0\",\"0\",\"1035.00/12033293/12446848997\"]}}}}";
+
+        List<DailyBar> bars = TencentQfqKLineFetcher.parseResponse("sh688256", body);
+        assertEquals(1, bars.size());
+        assertEquals(12_033_293.0, bars.get(0).getVolume(), 0.0001);
+        assertEquals(Boolean.FALSE,
+                TencentQfqKLineFetcher.parseResponse("sh688256", body, null).scaleVolume);
+    }
+
+    @Test
+    public void testParseQuoteDetectsLotVolumeForMainBoard() {
+        String body = "kline_dayqfq={\"code\":0,\"data\":{\"sh600000\":{"
+                + "\"qfqday\":[[\"2026-08-21\",\"9.090\",\"9.050\",\"9.150\",\"9.030\",\"512703.000\"]],"
+                + "\"qt\":{\"sh600000\":[\"1\",\"浦发银行\",\"600000\",\"9.05\","
+                + "\"9.11\",\"9.09\",\"512703\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\","
+                + "\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\","
+                + "\"0\",\"0\",\"0\",\"0\",\"0\",\"9.05/512703/465159863\"]}}}}";
+
+        List<DailyBar> bars = TencentQfqKLineFetcher.parseResponse("sh600000", body);
+        assertEquals(1, bars.size());
+        assertEquals(51_270_300.0, bars.get(0).getVolume(), 0.0001);
     }
 }

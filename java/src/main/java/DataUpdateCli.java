@@ -2,6 +2,7 @@ import fetcher.BulkKLineFetcher;
 import fetcher.StockUniverseFetcher;
 import log.FetchLog;
 import cache.KLineCache;
+import cache.VolumeUnit;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -10,7 +11,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.function.Function;
 
@@ -26,6 +29,8 @@ import java.util.function.Function;
  * 用法：
  *   mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
  *       "-Dexec.args=--repo-root /path/to/a-trend-data --mode incremental"
+ *
+ * 科创板成交量口径重建：加 --only-star（旧缓存缺 schema_version=2 时会全量重抓）。
  *
  * 默认 repo-root 为当前工作目录的上一级（java/ 的父目录）。
  */
@@ -89,19 +94,53 @@ public class DataUpdateCli {
         System.out.println("\n[Step 2] Fetching daily index benchmarks...");
         FetchIndicesCli.fetchToCache(cacheDir);
 
-        // Step 3: 批量拉个股K线（--only-sz 时只跑深市）
+        // Step 3: 批量拉个股K线（--only-sz / --only-star 过滤）
         boolean onlySz = hasFlag(args, "--only-sz");
+        boolean onlyStar = hasFlag(args, "--only-star");
         List<String> symbols = stocks.stream()
             .map(s -> s.symbol)
-            .filter(s -> !onlySz || s.startsWith("sz"))
+            .filter(s -> {
+                if (onlySz) return s.startsWith("sz");
+                if (onlyStar) return VolumeUnit.isShareQuotedSymbol(s);
+                return true;
+            })
             .collect(Collectors.toList());
         if (onlySz) System.out.println("  [--only-sz] 只处理深市，共 " + symbols.size() + " 只");
+        if (onlyStar) {
+            System.out.println("  [--only-star] 只处理科创板/CDR（及北交所规则标的），共 "
+                + symbols.size() + " 只");
+            if (minFreshToPublish == DEFAULT_MIN_FRESH_TO_PUBLISH) {
+                System.out.println("  [--only-star] 默认 min-fresh-to-publish=1000 可能拦开发布；"
+                    + "如需发布请加 --min-fresh-to-publish "
+                    + Math.max(1, symbols.size() / 2));
+            }
+        }
+        KLineCache volumeCache = new KLineCache(cacheDir);
+        int rebuildCount = 0;
+        for (String symbol : symbols) {
+            if (volumeCache.needsFullHistoryRebuild(symbol)) {
+                rebuildCount++;
+            }
+        }
+        if (rebuildCount > 0) {
+            System.out.println("  Volume schema rebuild required for " + rebuildCount
+                + " share-quoted symbols (STAR/CDR); fetching full history, not incremental merge");
+        }
         System.out.println("\n[Step 3] Fetching K-line data for " + symbols.size() + " symbols...");
-        Function<String, List<cache.DailyBar>> stockFetcher = resolveStockFetcher(mode, incrementalBars);
+        Function<String, List<cache.DailyBar>> fullFetcher =
+            monitor.trendfollowing.TencentQfqKLineFetcher::fetch;
+        Function<String, List<cache.DailyBar>> incrementalFetcher =
+            resolveIncrementalFetcher(mode, incrementalBars, fullFetcher);
+        Map<String, Long> marketCaps = new HashMap<String, Long>();
+        for (StockUniverseFetcher.StockEntry stock : stocks) {
+            marketCaps.put(stock.symbol, stock.marketCap);
+        }
         BulkKLineFetcher.FetchOptions options = BulkKLineFetcher.FetchOptions.defaults()
             .withSleepRange(minSleepMs, maxSleepMs)
-            .withWorkers(workers);
-        List<BulkKLineFetcher.FetchResult> results = BulkKLineFetcher.fetchAll(symbols, cacheDir, stockFetcher, options);
+            .withWorkers(workers)
+            .withMarketCaps(marketCaps);
+        List<BulkKLineFetcher.FetchResult> results =
+            BulkKLineFetcher.fetchAll(symbols, cacheDir, fullFetcher, incrementalFetcher, options);
         BulkKLineFetcher.Summary summary = BulkKLineFetcher.buildSummary(results);
 
         System.out.printf("%n=== K-line fetch done: %d OK, %d skipped, %d failed ===%n",
@@ -169,9 +208,10 @@ public class DataUpdateCli {
         }
     }
 
-    private static Function<String, List<cache.DailyBar>> resolveStockFetcher(String mode, int incrementalBars) {
+    private static Function<String, List<cache.DailyBar>> resolveIncrementalFetcher(
+            String mode, int incrementalBars, Function<String, List<cache.DailyBar>> fullFetcher) {
         if ("full".equals(mode)) {
-            return monitor.trendfollowing.TencentQfqKLineFetcher::fetch;
+            return fullFetcher;
         }
         if ("incremental".equals(mode)) {
             int bars = Math.max(1, incrementalBars);

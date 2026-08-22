@@ -23,6 +23,8 @@ import java.util.function.Function;
  */
 public class KLineCache {
     public static final String ADJUSTMENT = "qfq";
+    public static final int SCHEMA_VERSION = VolumeUnit.SCHEMA_VERSION;
+    public static final String VOLUME_UNIT = VolumeUnit.SHARES;
 
     private final String cacheDir;
     private final Gson gson;
@@ -71,6 +73,8 @@ public class KLineCache {
         CacheFile cf = new CacheFile();
         cf.symbol = symbol;
         cf.adjustment = ADJUSTMENT;
+        cf.schema_version = SCHEMA_VERSION;
+        cf.volume_unit = VOLUME_UNIT;
 
         List<DailyBar> sorted = new ArrayList<>(bars);
         sorted.sort(new Comparator<DailyBar>() {
@@ -145,7 +149,8 @@ public class KLineCache {
             CacheFile cf = gson.fromJson(reader, CacheFile.class);
             return cf != null
                 && today.equals(cf.last_updated)
-                && ADJUSTMENT.equals(cf.adjustment);
+                && ADJUSTMENT.equals(cf.adjustment)
+                && hasCurrentVolumeSchema(cf, symbol);
         } catch (Exception e) {
             System.err.println("Failed to check freshness for " + symbol + ": " + e.getMessage());
             return false;
@@ -167,11 +172,59 @@ public class KLineCache {
             return;
         }
 
-        List<DailyBar> toSave = hasQfqAdjustment(symbol)
+        List<DailyBar> toSave = canMerge(symbol)
             ? mergeBars(load(symbol), fetched)
             : fetched;
 
         save(symbol, toSave);
+    }
+
+    /**
+     * True when cached bars are qfq and already use share volume.
+     * Share-quoted boards (STAR/CDR/BSE) without schema v2 must be rebuilt
+     * from full history — merging would keep the old 100x volumes.
+     */
+    public boolean canMerge(String symbol) {
+        return hasQfqAdjustment(symbol) && !needsFullHistoryRebuild(symbol);
+    }
+
+    /**
+     * STAR / CDR / BSE caches written before schema v2 have 100x-inflated volume.
+     */
+    public boolean needsFullHistoryRebuild(String symbol) {
+        validateSymbol(symbol);
+        if (!VolumeUnit.isShareQuotedSymbol(symbol)) {
+            return false;
+        }
+        return !hasCurrentVolumeSchema(symbol);
+    }
+
+    public boolean hasCurrentVolumeSchema(String symbol) {
+        validateSymbol(symbol);
+
+        File cacheFile = new File(cacheDir, symbol + ".json");
+        if (!cacheFile.exists()) {
+            return false;
+        }
+
+        try (FileReader reader = new FileReader(cacheFile)) {
+            CacheFile cf = gson.fromJson(reader, CacheFile.class);
+            return hasCurrentVolumeSchema(cf, symbol);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean hasCurrentVolumeSchema(CacheFile cf, String symbol) {
+        if (cf == null) {
+            return false;
+        }
+        if (!VolumeUnit.isShareQuotedSymbol(symbol)) {
+            return true;
+        }
+        boolean schemaOk = cf.schema_version != null && cf.schema_version >= SCHEMA_VERSION;
+        boolean unitOk = VOLUME_UNIT.equals(cf.volume_unit);
+        return schemaOk || unitOk;
     }
 
     /**
@@ -246,6 +299,8 @@ public class KLineCache {
     static class CacheFile {
         String symbol;
         String adjustment;
+        Integer schema_version;
+        String volume_unit;
         String last_updated;
         List<DailyBar> bars;
     }

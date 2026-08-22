@@ -2,6 +2,7 @@ package fetcher;
 
 import cache.DailyBar;
 import cache.KLineCache;
+import cache.VolumeSanity;
 import monitor.trendfollowing.TencentQfqKLineFetcher;
 
 import java.util.*;
@@ -57,6 +58,7 @@ public class BulkKLineFetcher {
         public int failureStreakCooldownThreshold = FAILURE_STREAK_COOLDOWN_THRESHOLD;
         public int failureStreakCooldownMs = FAILURE_STREAK_COOLDOWN_MS;
         public int workers = WORKERS;
+        public Map<String, Long> marketCaps = new HashMap<String, Long>();
 
         public static FetchOptions defaults() {
             return new FetchOptions();
@@ -72,6 +74,13 @@ public class BulkKLineFetcher {
             this.workers = Math.max(1, workers);
             return this;
         }
+
+        public FetchOptions withMarketCaps(Map<String, Long> marketCaps) {
+            this.marketCaps = marketCaps == null
+                ? new HashMap<String, Long>()
+                : new HashMap<String, Long>(marketCaps);
+            return this;
+        }
     }
 
     /**
@@ -79,7 +88,7 @@ public class BulkKLineFetcher {
      */
     public static FetchResult fetchOne(String symbol, String cacheDir,
                                         Function<String, List<DailyBar>> fetcher) {
-        return fetchOne(symbol, cacheDir, fetcher, fetcher);
+        return fetchOne(symbol, cacheDir, fetcher, fetcher, null);
     }
 
     /**
@@ -88,15 +97,31 @@ public class BulkKLineFetcher {
     public static FetchResult fetchOne(String symbol, String cacheDir,
                                         Function<String, List<DailyBar>> fullFetcher,
                                         Function<String, List<DailyBar>> incrementalFetcher) {
+        return fetchOne(symbol, cacheDir, fullFetcher, incrementalFetcher, null);
+    }
+
+    public static FetchResult fetchOne(String symbol, String cacheDir,
+                                        Function<String, List<DailyBar>> fullFetcher,
+                                        Function<String, List<DailyBar>> incrementalFetcher,
+                                        Long marketCapYuan) {
         KLineCache cache = new KLineCache(cacheDir);
         if (cache.isFresh(symbol)) {
             return new FetchResult(symbol, Status.SKIPPED);
         }
-        boolean canIncremental = cache.hasQfqAdjustment(symbol) && !cache.load(symbol).isEmpty();
+        boolean rebuild = cache.needsFullHistoryRebuild(symbol);
+        boolean canIncremental = cache.canMerge(symbol) && !cache.load(symbol).isEmpty();
+        if (rebuild) {
+            System.out.printf("  [volume-schema] %-12s full history rebuild%n", symbol);
+        }
         Function<String, List<DailyBar>> selectedFetcher =
             canIncremental ? incrementalFetcher : fullFetcher;
         List<DailyBar> bars = selectedFetcher.apply(symbol);
         if (bars == null || bars.isEmpty()) {
+            return new FetchResult(symbol, Status.FAILED);
+        }
+        String reject = VolumeSanity.explainReject(symbol, bars, marketCapYuan);
+        if (reject != null) {
+            System.err.println("Rejected implausible volume: " + reject);
             return new FetchResult(symbol, Status.FAILED);
         }
         cache.refresh(symbol, s -> bars);
@@ -158,7 +183,8 @@ public class BulkKLineFetcher {
                 fullFetcher,
                 incrementalFetcher,
                 options.retryCount,
-                options.retryBaseSleepMs
+                options.retryBaseSleepMs,
+                marketCapOf(options, symbol)
             );
             results.add(result);
             symbolIndex.put(symbol, i);
@@ -197,7 +223,8 @@ public class BulkKLineFetcher {
                     fullFetcher,
                     incrementalFetcher,
                     options.retryCount,
-                    options.retryBaseSleepMs
+                    options.retryBaseSleepMs,
+                    marketCapOf(options, symbol)
                 );
                 // 更新 results 中对应的条目
                 Integer idx = symbolIndex.get(symbol);
@@ -241,7 +268,8 @@ public class BulkKLineFetcher {
                             fullFetcher,
                             incrementalFetcher,
                             options.retryCount,
-                            options.retryBaseSleepMs
+                            options.retryBaseSleepMs,
+                            marketCapOf(options, symbol)
                         );
                         results[i] = result;
                         processedByWorker++;
@@ -309,7 +337,8 @@ public class BulkKLineFetcher {
                     fullFetcher,
                     incrementalFetcher,
                     options.retryCount,
-                    options.retryBaseSleepMs
+                    options.retryBaseSleepMs,
+                    marketCapOf(options, symbol)
                 );
                 results[idx] = retry;
                 System.out.printf("  补偿 %-12s %s%n", symbol, retry.status);
@@ -332,15 +361,26 @@ public class BulkKLineFetcher {
         options.failureStreakCooldownThreshold = Math.max(1, options.failureStreakCooldownThreshold);
         options.failureStreakCooldownMs = Math.max(0, options.failureStreakCooldownMs);
         options.workers = Math.max(1, options.workers);
+        if (options.marketCaps == null) {
+            options.marketCaps = new HashMap<String, Long>();
+        }
+    }
+
+    private static Long marketCapOf(FetchOptions options, String symbol) {
+        if (options == null || options.marketCaps == null) {
+            return null;
+        }
+        return options.marketCaps.get(symbol);
     }
 
     private static FetchResult fetchWithRetry(String symbol, String cacheDir,
                                                Function<String, List<DailyBar>> fullFetcher,
                                                Function<String, List<DailyBar>> incrementalFetcher,
                                                int maxRetry,
-                                               int retryBaseSleepMs) {
+                                               int retryBaseSleepMs,
+                                               Long marketCapYuan) {
         for (int attempt = 0; attempt <= maxRetry; attempt++) {
-            FetchResult r = fetchOne(symbol, cacheDir, fullFetcher, incrementalFetcher);
+            FetchResult r = fetchOne(symbol, cacheDir, fullFetcher, incrementalFetcher, marketCapYuan);
             if (r.status != Status.FAILED) return r;
             if (attempt < maxRetry) {
                 int backoff = retryBaseSleepMs * (attempt + 1);

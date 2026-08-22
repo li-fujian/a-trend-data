@@ -20,8 +20,9 @@ import java.util.Map;
  * date,open,close,high,low,volume,amount,amplitude,pct_chg,chg,turnover
  * </pre>
  *
- * <p>Eastmoney volume is in hands. Cache historically stores Sina volume in shares, so this
- * adapter multiplies Eastmoney volume by 100 to keep downstream volume ratios and units stable.
+ * <p>Eastmoney volume is in hands (手) for all A-share boards including STAR.
+ * Cache stores shares, so this adapter multiplies by 100. Production uses
+ * {@link TencentQfqKLineFetcher}, which must NOT blindly *100 for STAR.
  */
 @Deprecated
 public class EastmoneyQfqKLineFetcher {

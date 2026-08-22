@@ -32,7 +32,8 @@ cron 示例（北京时间工作日 17:00）：
 ```
 
 **只拉不发布：** 加 `--no-push`  
-**只补深市：** 加 `--only-sz`
+**只补深市：** 加 `--only-sz`  
+**只重建科创板成交量：** 加 `--only-star`（会全量重抓缺 `schema_version` 的 `sh688`/`sh689`）  
 **全量重建：** 加 `--mode full`
 
 完成后检查 `logs/fetch-log.json` 中 `failed` 是否可接受。默认 `--max-failed-to-publish=20`，超过阈值会写日志但不覆盖 GitHub Release；默认 `--min-fresh-to-publish=1000`，如果今日 fresh 标的太少，也不会覆盖 Release。
@@ -50,7 +51,7 @@ cron 示例（北京时间工作日 17:00）：
 | Git 跟踪 | `cache/`、`config/stock-universe.json`、`logs/fetch-log.json` 已 `.gitignore`，不再 commit JSON |
 | 仓库 | https://github.com/li-fujian/a-trend-data |
 
-**fresh 策略：** 当天已更新且 `adjustment=qfq` 的缓存会被跳过（`isFresh`）。跨天默认只抓最近 420 根日 K 并 merge。旧无 `adjustment` 字段的缓存视为 non-fresh，会用本次抓到的数据替换为腾讯 qfq。
+**fresh 策略：** 当天已更新且 `adjustment=qfq` 的缓存会被跳过（`isFresh`）。科创板 / CDR 还要求 `schema_version>=2` 或 `volume_unit=shares`，否则视为脏数据，走全量重抓并整包替换（旧缓存把腾讯已是「股」的成交量又乘了 100）。跨天默认只抓最近 420 根日 K 并 merge。旧无 `adjustment` 字段的缓存视为 non-fresh。
 
 ---
 
