@@ -6,7 +6,7 @@ java/target/
 .daily-fetch.lock
 
 # Runtime data (published via GitHub Release latest)
-/cache/
+/cache/kline/
 /config/stock-universe.json
 /logs/fetch-log.json
 /logs/cron/

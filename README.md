@@ -54,7 +54,7 @@ parent/
 | `java/` | Java 拉取与打包入口 | ✅ |
 | `scripts/` | 发布/下载脚本（sh、ps1、Python 备用） | ✅ |
 | `cache/kline/` | 每只标的一个 JSON，前复权日线 | ❌（Release 分发） |
-| `cache/compass/` | 指南针市场指标日线（如活跃市值 `0AMV`） | ❌（仅本机，不进 Release） |
+| `cache/compass/` | 指南针市场指标日线（如活跃市值 `0AMV`） | ✅（不进 Release 附件） |
 | `config/stock-universe.json` | 全量股票池（市值过滤后） | ❌ |
 | `logs/fetch-log.json` | 每次拉取摘要 | ❌ |
 | `logs/cron/` | 云端定时任务日志 | ❌ |
@@ -259,7 +259,7 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 
 ## 指南针活跃市值（0AMV）
 
-这不是股票，不要放进 `cache/kline/`，也不要打进 GitHub Release。日线单独放在：
+这不是股票，不要放进 `cache/kline/`，也不要打进 GitHub Release 附件。日线单独放在仓库里：
 
 `cache/compass/0AMV.json`
 

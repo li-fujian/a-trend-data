@@ -205,7 +205,7 @@ a-trend-data/
 │   ├── publish-latest-release-api.py   # 无 gh 时 REST 发布
 │   └── extract_compass_amv.py          # 本机指南针 0AMV 日线 → cache/compass/
 ├── cache/kline/                        # gitignored
-├── cache/compass/0AMV.json             # gitignored，指南针活跃市值，不进 Release
+├── cache/compass/0AMV.json             # 指南针活跃市值日线（进 Git，不进 Release 附件）
 ├── config/stock-universe.json          # gitignored
 └── logs/fetch-log.json                 # gitignored
 ```
