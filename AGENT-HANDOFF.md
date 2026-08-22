@@ -63,7 +63,7 @@ parent/
 └── a-trend-data/   ← 本仓库
 ```
 
-`a-trend` 配置中 `cache_dir` 为 `../a-trend-data/cache/kline`，依赖上述 sibling 布局。
+`a-trend` 配置中 `cache_dir` 为 `../a-trend-data/cache/kline`，依赖上述 sibling 布局。指南针活跃市值在 `cache/compass/0AMV.json`，不要放进 `cache/kline`。本地更新：先退出指南针，再跑 `python scripts/extract_compass_amv.py --repo-root <repo>`。
 
 ---
 
@@ -202,8 +202,10 @@ a-trend-data/
 │   ├── publish-latest-release.{sh,ps1}
 │   ├── download-latest-release.{sh,ps1}
 │   ├── package-kline-bundle.py         # 无 zstd CLI 时打包
-│   └── publish-latest-release-api.py   # 无 gh 时 REST 发布
+│   ├── publish-latest-release-api.py   # 无 gh 时 REST 发布
+│   └── extract_compass_amv.py          # 本机指南针 0AMV 日线 → cache/compass/
 ├── cache/kline/                        # gitignored
+├── cache/compass/0AMV.json             # gitignored，指南针活跃市值，不进 Release
 ├── config/stock-universe.json          # gitignored
 └── logs/fetch-log.json                 # gitignored
 ```

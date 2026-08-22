@@ -54,6 +54,7 @@ parent/
 | `java/` | Java 拉取与打包入口 | ✅ |
 | `scripts/` | 发布/下载脚本（sh、ps1、Python 备用） | ✅ |
 | `cache/kline/` | 每只标的一个 JSON，前复权日线 | ❌（Release 分发） |
+| `cache/compass/` | 指南针市场指标日线（如活跃市值 `0AMV`） | ❌（仅本机，不进 Release） |
 | `config/stock-universe.json` | 全量股票池（市值过滤后） | ❌ |
 | `logs/fetch-log.json` | 每次拉取摘要 | ❌ |
 | `logs/cron/` | 云端定时任务日志 | ❌ |
@@ -253,6 +254,24 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 ```
 
 修好的缓存应满足：`sh688256` 在 2026-08-20 的 `volume` 为 `14855370`（不是 `1485537000`）；`schema_version` 为 2。
+
+---
+
+## 指南针活跃市值（0AMV）
+
+这不是股票，不要放进 `cache/kline/`，也不要打进 GitHub Release。日线单独放在：
+
+`cache/compass/0AMV.json`
+
+字段与个股 K 线相近（`date/open/high/low/close/volume`），另有 `amount`。`close` 就是指南针软件里看到的活跃市值；`volume` 为股，`amount` 为元。当前本地快照：8191 根日线，1993-01-03 至 2026-08-21。
+
+数据只存在本机指南针缓存 `day.vdat` 里。导出前先**彻底退出指南针**，然后：
+
+```powershell
+python scripts/extract_compass_amv.py --repo-root D:\cursorworkspace\a-trend-data
+```
+
+下游回测用单独目录加载，例如 a-trend：`load("0AMV", cache_dir="../a-trend-data/cache/compass")`。不要把它和 `sh600000` 那样的个股文件混在同一目录。
 
 ---
 

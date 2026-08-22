@@ -12,3 +12,6 @@ java/target/
 /logs/cron/
 /dist/
 /*.tar.zst
+
+# Local Compass dumps (do not commit vendor data)
+.tmp-compass/
