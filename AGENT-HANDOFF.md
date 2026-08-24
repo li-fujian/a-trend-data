@@ -63,7 +63,7 @@ parent/
 └── a-trend-data/   ← 本仓库
 ```
 
-`a-trend` 配置中 `cache_dir` 为 `../a-trend-data/cache/kline`，依赖上述 sibling 布局。指南针活跃市值在 `cache/compass/0AMV.json`，不要放进 `cache/kline`。本地更新：先退出指南针，再跑 `python scripts/extract_compass_amv.py --repo-root <repo>`。
+`a-trend` 配置中 `cache_dir` 为 `../a-trend-data/cache/kline`，依赖上述 sibling 布局。指南针活跃市值在 `cache/compass/0AMV.json`，不要放进 `cache/kline`。它不由 `daily_fetch.sh` 更新；固定流程是先打开指南针完成行情更新，再彻底退出 `WavMain` 和全部 `ZnzBrowser`，然后运行 `python scripts/extract_compass_amv.py --repo-root <repo>`，并核对输出的末根日期。若 `day.vdat` 报 `PermissionError`，先排查残留进程，不要绕过文件锁。
 
 ---
 

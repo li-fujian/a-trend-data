@@ -5,8 +5,8 @@
   "source_code": "Z_SK0AMV",
   "kind": "market_indicator",
   "freq": "daily",
-  "last_updated": "2026-08-21",
-  "bar_count": 8191,
+  "last_updated": "2026-08-24",
+  "bar_count": 8192,
   "bars": [
     {
       "date": "1993-01-03",
@@ -73726,6 +73726,15 @@
       "close": 196428.2969,
       "volume": 99051429888,
       "amount": 1879151083520
+    },
+    {
+      "date": "2026-08-24",
+      "open": 196486.1094,
+      "high": 197317.7031,
+      "low": 189171.5,
+      "close": 190694.9062,
+      "volume": 104993660928,
+      "amount": 2007227826176
     }
   ]
 }

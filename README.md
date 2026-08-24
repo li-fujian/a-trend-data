@@ -263,13 +263,29 @@ mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
 
 `cache/compass/0AMV.json`
 
-字段与个股 K 线相近（`date/open/high/low/close/volume`），另有 `amount`。`close` 就是指南针软件里看到的活跃市值；`volume` 为股，`amount` 为元。当前本地快照：8191 根日线，1993-01-03 至 2026-08-21。
+字段与个股 K 线相近（`date/open/high/low/close/volume`），另有 `amount`。`close` 就是指南针软件里看到的活跃市值；`volume` 为股，`amount` 为元。
 
-数据只存在本机指南针缓存 `day.vdat` 里。导出前先**彻底退出指南针**，然后：
+0AMV 不在 `daily_fetch.sh` 的联网更新链路里。固定更新流程是：
+
+1. 打开指南针，让软件完成当日行情更新；
+2. **彻底退出指南针**，确认 `WavMain` 和全部 `ZnzBrowser` 进程已经结束；
+3. 执行导出：
 
 ```powershell
 python scripts/extract_compass_amv.py --repo-root D:\cursorworkspace\a-trend-data
 ```
+
+4. 核对输出的 `bars ... -> YYYY-MM-DD`，并检查 JSON 元数据：
+
+```powershell
+python -c "import json; p=json.load(open(r'cache/compass/0AMV.json',encoding='utf-8')); print(p['last_updated'],p['bar_count'],p['bars'][-1])"
+```
+
+若读取 `day.vdat` 报 `PermissionError`，通常是指南针仍占用文件；不要绕过文件锁，先检查并
+退出上述进程。脚本每次从 `day.vdat` 全量解析并覆盖 `0AMV.json`，不是增量拼接。
+
+`cache/compass/0AMV.json` 由 Git 跟踪，便于在仓库间同步，但不会打进
+`kline-latest.tar.zst`；需要跨机器更新时应提交并推送这个 JSON，不能只下载 Release 附件。
 
 下游回测用单独目录加载，例如 a-trend：`load("0AMV", cache_dir="../a-trend-data/cache/compass")`。不要把它和 `sh600000` 那样的个股文件混在同一目录。
 
