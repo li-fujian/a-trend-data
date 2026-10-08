@@ -30,7 +30,13 @@ Write-Output "==> Packaging $ArchivePath"
 Remove-Item -Force -ErrorAction SilentlyContinue $ArchivePath
 Push-Location $RepoRoot
 try {
-    tar -cf - cache/kline config/stock-universe.json logs/fetch-log.json | zstd -T0 -19 -o $ArchivePath
+    $BundleMembers = @('cache/kline', 'config/stock-universe.json', 'logs/fetch-log.json')
+    if (Test-Path -LiteralPath 'cache/market/sh_sz_turnover.json' -PathType Leaf) {
+        $BundleMembers += 'cache/market/sh_sz_turnover.json'
+    } else {
+        Write-Warning 'Market turnover series is absent; bundle has no market turnover series'
+    }
+    tar -cf - @BundleMembers | zstd -T0 -19 -o $ArchivePath
 } finally {
     Pop-Location
 }

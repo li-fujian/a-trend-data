@@ -45,7 +45,13 @@ cd "$REPO_ROOT"
 
 echo "==> Packaging ${ARCHIVE_PATH}"
 rm -f "$ARCHIVE_PATH"
-tar -C "$REPO_ROOT" -cf - cache/kline config/stock-universe.json logs/fetch-log.json \
+bundle_members=(cache/kline config/stock-universe.json logs/fetch-log.json)
+if [[ -f cache/market/sh_sz_turnover.json ]]; then
+  bundle_members+=(cache/market/sh_sz_turnover.json)
+else
+  echo 'WARNING: Market turnover series is absent; bundle has no market turnover series' >&2
+fi
+tar -C "$REPO_ROOT" -cf - "${bundle_members[@]}" \
   | zstd -T0 -19 -o "$ARCHIVE_PATH"
 
 echo "==> Verifying archive"

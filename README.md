@@ -1,298 +1,85 @@
-# a-trend-data
+# 本机行情数据更新
 
-A 股前复权 K 线数据管道：每日拉取全市场数据，打包为 `kline-latest.tar.zst`，发布到 GitHub Release `latest`。Git 仓库只保留代码与脚本，**不再提交数千个 JSON 缓存文件**。
+本项目负责将通达信本地行情转换为统一 JSON，增量维护数据缓存。**以下默认路径和使用流程仅适用于当前这台 Windows 电脑。**
 
-仓库：https://github.com/li-fujian/a-trend-data
+## 日常更新
 
----
-
-## 快速开始
-
-### 1. 克隆代码
-
-```bash
-git clone https://github.com/li-fujian/a-trend-data.git
-cd a-trend-data
-```
-
-### 2. 获取数据（二选一）
-
-**方式 A — 下载最新 Release（推荐，无需拉取）**
-
-```bash
-# Linux / macOS / Git Bash
-bash scripts/download-latest-release.sh --repo-root /path/to/a-trend-data
-```
+1. 在通达信中完成盘后日线下载。
+2. 在本项目目录执行：
 
 ```powershell
-# Windows
-powershell -File scripts/download-latest-release.ps1 -RepoRoot E:\code\a-trend-data
+python scripts\update_local_data.py
 ```
 
-前置：`gh`（[GitHub CLI](https://cli.github.com/)）、`zstd`。Windows 10+ 自带 `tar`。
+默认读取 `E:\new_tdx64`，写入 `D:\cursorworkspace\a-trend-data\cache\kline`。只需要 Python 3.10+ 标准库；日常更新不使用 Java，不联网。
 
-**方式 B — 本地拉取并发布**
+- 没有新数据：直接跳过，不重写缓存。
+- 普通新增日线：按末日追加。
+- 新增除权或本地数据改写：只重新计算受影响的标的。
+- 首次接入：保留旧缓存的更早历史，以旧缓存末日为基准接入本地日线；原文件自动备份。
+- 默认范围：本机已下载的沪深北 A 股、六个主要指数，以及已有缓存。范围不受股票列表的市值过滤限制。
+- 同步维护沪深两市每日成交量、成交额汇总；两份本地指数源无变化时直接跳过。
 
-见下方 [数据拉取](#数据拉取)。需 JDK 8、Maven，以及 sibling 项目 `a-trend` 的 JAR（见 [开发与依赖](#开发与依赖)）。
-
-### 3. 下游策略仓库
-
-若使用 [a-trend](https://github.com/li-fujian/a-trend) 策略项目，请将两个仓库放在同一父目录：
-
-```
-parent/
-├── a-trend/        # 策略仓库，cache_dir 指向 ../a-trend-data/cache/kline
-└── a-trend-data/   # 本仓库
-```
-
----
-
-## 目录结构
-
-| 路径 | 说明 | 是否进 Git |
-|------|------|------------|
-| `java/` | Java 拉取与打包入口 | ✅ |
-| `scripts/` | 发布/下载脚本（sh、ps1、Python 备用） | ✅ |
-| `cache/kline/` | 每只标的一个 JSON，前复权日线 | ❌（Release 分发） |
-| `cache/compass/` | 指南针市场指标日线（如活跃市值 `0AMV`） | ✅（不进 Release 附件） |
-| `config/stock-universe.json` | 全量股票池（市值过滤后） | ❌ |
-| `logs/fetch-log.json` | 每次拉取摘要 | ❌ |
-| `logs/cron/` | 云端定时任务日志 | ❌ |
-| `dist/kline-latest.tar.zst` | 发布前临时压缩包 | ❌ |
-
----
-
-## 数据拉取
-
-```bash
-cd java
-mvn compile -q -DskipTests
-mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
-    "-Dexec.args=--repo-root $(cd .. && pwd) --mode incremental"
-```
-
-常用参数：
-
-| 参数 | 含义 |
-|------|------|
-| `--repo-root PATH` | 仓库根目录（默认 `java/` 的上一级） |
-| `--mode incremental` | 默认模式，只抓每只标的最近一段日 K，并与本地缓存 merge |
-| `--mode full` | 全量重建模式，抓腾讯可返回的最长历史 |
-| `--incremental-bars N` | 增量模式每只标的抓最近 N 根日 K，默认 420 |
-| `--max-failed-to-publish N` | 失败数超过 N 时不覆盖 Release，默认 20 |
-| `--min-fresh-to-publish N` | 当天成功更新为今日日期的标的少于 N 时不覆盖 Release，默认 1000 |
-| `--trading-days-only` | 周末直接跳过；法定节假日建议由 cron 或外部日历控制 |
-| `--no-push` | 跳过 Step 6，不发布 Release |
-| `--only-sz` | 仅拉取深市个股（调试/补跑） |
-| `--only-star` | 仅拉取科创板 / CDR（`sh688`/`sh689`），用于成交量口径重建 |
-
-本地只拉不发布：
-
-```bash
-"-Dexec.args=--repo-root /path/to/a-trend-data --no-push"
-```
-
-单独补抓指数：
-
-```bash
-mvn -q exec:java -Dexec.mainClass=FetchIndicesCli \
-    "-Dexec.args=--repo-root /path/to/a-trend-data"
-```
-
-发布 Step 6 需要 `gh auth login`（或环境变量 `GH_TOKEN` / `GITHUB_TOKEN`）以及 `zstd`、`tar`。
-
----
-
-## 腾讯云定时更新
-
-推荐在腾讯云 CVM 上持久保存 `cache/kline/`，每个交易日收盘后运行增量更新，成功后覆盖 GitHub Release `latest`。
-
-一次性准备：
-
-```bash
-sudo apt-get update
-sudo apt-get install -y git maven openjdk-8-jdk gh zstd tar
-gh auth login
-git clone https://github.com/li-fujian/a-trend-data.git /opt/a-trend-data
-```
-
-手动试跑：
-
-```bash
-cd /opt/a-trend-data
-bash scripts/daily_fetch.sh
-```
-
-cron 示例（北京时间工作日 17:00 运行）：
-
-```cron
-0 17 * * 1-5 A_TREND_DATA_REPO_ROOT=/opt/a-trend-data /bin/bash /opt/a-trend-data/scripts/daily_fetch.sh
-```
-
-可调环境变量：
-
-| 变量 | 默认值 | 含义 |
-|------|--------|------|
-| `A_TREND_FETCH_MODE` | `incremental` | `incremental` 或 `full` |
-| `A_TREND_INCREMENTAL_BARS` | `420` | 增量模式每只标的抓取的最近日 K 数 |
-| `A_TREND_MAX_FAILED_TO_PUBLISH` | `20` | 超过该失败数就不上传 Release |
-| `A_TREND_MIN_FRESH_TO_PUBLISH` | `1000` | 当天 fresh 标的少于该数量就不上传 Release |
-| `A_TREND_MIN_SLEEP_MS` / `A_TREND_MAX_SLEEP_MS` | `1200` / `2200` | 个股请求间随机等待 |
-| `A_TREND_NOTIFY_WEBHOOK` | 空 | 可选，任务成功/失败后 POST JSON 通知 |
-
-脚本会使用 `.daily-fetch.lock` 防止重复运行，并把日志写到 `logs/cron/daily-fetch-YYYY-MM-DD.log`。
-
----
-
-## 从 Release 下载
-
-- **Release tag**：固定 `latest`
-- **附件**：`kline-latest.tar.zst`（含 `cache/kline`、`config/stock-universe.json`、`logs/fetch-log.json`）
-- 每次发布覆盖附件，并删除其它历史 Release
-
-手动发布（拉取完成后也会自动调用）：
-
-```bash
-bash scripts/publish-latest-release.sh --repo-root /path/to/a-trend-data
-```
+只查看预估结果或处理单个文件：
 
 ```powershell
-powershell -File scripts/publish-latest-release.ps1 -RepoRoot E:\code\a-trend-data
+python scripts\update_local_data.py --dry-run
+python scripts\update_local_data.py --symbol sh600000
 ```
 
-**无 `zstd` CLI 时的 Python 备用**（需 `pip install zstandard`）：
+不需要每次先全量预检再更新；正常直接运行第一条更新命令即可。
 
-```bash
-python scripts/package-kline-bundle.py --repo-root /path/to/a-trend-data
-GITHUB_TOKEN=xxx python scripts/publish-latest-release-api.py --repo-root /path/to/a-trend-data
-```
+## 数据在哪里、怎样读取
 
----
+| 路径 | 内容 |
+|---|---|
+| `cache/kline/{市场}{代码}.json` | 前复权日线，`bars` 按日期升序 |
+| `cache/compass/0AMV.json` | 指南针活跃市值，独立更新 |
+| `cache/market/sh_sz_turnover.json` | 沪深每日成交量、成交额，包含分市值与合计值 |
+| `logs/local-update-latest.json` | 最近一次本地更新结果、耗时、日期覆盖和异常 |
+| `logs/cron/local-*/backup/` | 每次改写前的旧文件备份 |
+| `cache/.local-update/` | 增量状态、解码缓存和继承历史基准，属于本机运行数据 |
 
-## 开发与依赖
+日线字段为 `date/open/high/low/close/volume`，本地新增记录另有 `amount`。`adjustment=qfq`、`schema_version=2`、`volume_unit=shares`：价格为前复权，成交量为实际股数，成交额为元，成交量不做复权。指数源文件的成交量按手换算为股。
 
-### 环境
+`last_updated` 等于最后一根日线的日期，不是程序运行日期。个别文件末日较早且本地源同样没有新记录，程序会保留实际日期，不制造补齐记录。
 
-- JDK 8、Maven 3.x
-- 可选：`gh`、`zstd`（发布/下载 Release）
-- 测试：`cd java && mvn -q test`
+旧缓存早于本地可用历史的部分会保留，文件通过 `history_origin=preserved_qfq_baseline` 和 `baseline_date` 标识；基准日之后按本地除权记录计算等比前复权。新建文件全部由本地日线生成。除权后历史前复权价格会改变，读取时应使用整份文件。
 
-### a-trend JAR
+## 沪深两市成交量、成交额
 
-编译依赖 sibling 项目 `a-trend` 安装到本地 Maven：
+其他项目直接读取 `cache/market/sh_sz_turnover.json`。`bars` 按日期升序，`volume` 为两市成交股数，`amount` 为两市成交金额（人民币元）；`sh_volume/sz_volume` 和 `sh_amount/sz_amount` 保留沪深分项，合计严格等于分项之和。展示为亿股、亿元时除以 `1e8`。
 
-```bash
-cd ../a-trend   # 与 a-trend-data 同级
-mvn package -q -DskipTests
-mvn install:install-file \
-  -Dfile=target/a-trend-1.0.0.jar \
-  -DgroupId=com.atrend -DartifactId=a-trend \
-  -Dversion=1.0.0 -Dpackaging=jar
-```
+采用通达信本地 **上证综指 `sh000001` + 深证综指 `sz399106`** 的日线量额口径，含 B 股口径、不含北交所，不能标为纯 A 股统计或交易所全部证券（含基金、债券）成交总额。指数样本与全体上市股票也可能不同；这里保存通达信原始量额，不按当前股票池重新求和、不推断市场阶段。详细口径、字段和读取示例见 [两市量额接口](docs/market-turnover.md)。
 
-验证：`~/.m2/repository/com/atrend/a-trend/1.0.0/a-trend-1.0.0.jar` 存在。
-
----
-
-## 架构概览
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  DataUpdateCli（主入口）                                     │
-├─────────────────────────────────────────────────────────────┤
-│  Step 1  StockUniverseFetcher  → 新浪 A 股列表，市值过滤     │
-│  Step 2  FetchIndicesCli       → 5 只主要指数               │
-│  Step 3  BulkKLineFetcher      → 腾讯财经 qfq 个股批量拉取   │
-│  Step 4  FetchIndicesCli       → 指数二次补抓               │
-│  Step 5  FetchLog              → logs/fetch-log.json        │
-│  Step 6  publish-latest-release → dist/kline-latest.tar.zst │
-│          gh release upload latest --clobber                   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              GitHub Release `latest` / kline-latest.tar.zst
-                              │
-                              ▼
-              download-latest-release.* → 解压到 cache/
-```
-
-**数据源**
-
-| 数据 | 接口 | 说明 |
-|------|------|------|
-| 股票列表 | 新浪 `Market_Center.getHQNodeData` | 市值 50 亿–1.5 万亿，排除 ST |
-| 个股 K 线 | 腾讯 `web.ifzq.gtimg.cn` | `qfq` 前复权；缓存成交量一律为**股**。主板/创业板/B股接口单位是手，写入前 ×100；科创板 `sh688`/`sh689`（及北交所）接口已是股，**不再乘 100**。单位优先用同行情里的成交额反推，前缀规则兜底。 |
-| 指数 K 线 | 同上 | 5 只：上证、沪深300、中证500、科创50、创业板指 |
-
-缓存 JSON 字段：`adjustment: "qfq"`、`schema_version: 2`、`volume_unit: "shares"`。缺少版本标记的科创板旧缓存视为脏数据（历史成交量被放大 100 倍），下次运行会**整段全量重抓并替换**，不会和旧 bar merge。无 `adjustment` 的更旧缓存同样视为 non-fresh。
-
-写入前用 `close × volume / market_cap` 做换手率护栏：单日隐含换手 >200%，或近 20 根里有 ≥10 根超过 100%，拒写。这次科创板 100 倍错误会在第一天被拦住。
-
-下游若曾对 `sh688` 做 `volume * 0.01` 兜底，必须改成「仅当 `schema_version` 缺失且 `volume_unit` 不是 `shares` 时才修正」。否则上游修好后会除两次 100。
-
-**定时任务**：GitHub Actions 不再运行数据更新。生产建议使用腾讯云 CVM 上的 `scripts/daily_fetch.sh`，通过 cron 在收盘后增量更新并发布 Release。
-
----
-
-## 数据口径与限制
-
-- 前复权（qfq）；腾讯早期段可能存在脏数据，解析时会丢弃 OHLC ≤ 0 的 bar，部分标的有效历史晚于上市日（如茅台约自 2016-06 起）。
-- 成交量口径：缓存为股。科创板申报单位是 1 股递增，腾讯日 K 对 `sh688`/`sh689` 直接返回股；其它板块返回手。北交所尚未进股票池，但同一规则已按 `bj` 前缀预留。
-- 北交所（`bj` 前缀）不在股票池内。
-- `cache/kline/` 可能含历史遗留 ETF 等额外 JSON；打包为**全目录快照**，不限于 `stock-universe.json` 内标的。
-- 2026-06-07 全量拉取参考：`total=3274`，`ok=3274`，`failed=0`（见 `logs/fetch-log.json`）。
-
-### 科创板成交量口径重建
-
-2026-08 前写入的 `sh688` 缓存把接口里的股又乘了 100，全历史都错。代码修复后，**下一次增量任务会自动全量重抓这些标的**（约 450 只，耗时明显高于普通增量）。不必先 `--mode full` 跑全市场。
-
-只重建科创板（不碰其它板块、默认也不该直接发布）：
-
-```bash
-mvn -q exec:java -Dexec.mainClass=DataUpdateCli \
-  "-Dexec.args=--repo-root /path/to/a-trend-data --only-star --no-push"
-```
-
-修好的缓存应满足：`sh688256` 在 2026-08-20 的 `volume` 为 `14855370`（不是 `1485537000`）；`schema_version` 为 2。
-
----
-
-## 指南针活跃市值（0AMV）
-
-这不是股票，不要放进 `cache/kline/`，也不要打进 GitHub Release 附件。日线单独放在仓库里：
-
-`cache/compass/0AMV.json`
-
-字段与个股 K 线相近（`date/open/high/low/close/volume`），另有 `amount`。`close` 就是指南针软件里看到的活跃市值；`volume` 为股，`amount` 为元。
-
-0AMV 不在 `daily_fetch.sh` 的联网更新链路里。固定更新流程是：
-
-1. 打开指南针，让软件完成当日行情更新；
-2. **彻底退出指南针**，确认 `WavMain` 和全部 `ZnzBrowser` 进程已经结束；
-3. 执行导出：
+正常日常命令自动更新。只需更新这份数据时执行：
 
 ```powershell
-python scripts/extract_compass_amv.py --repo-root D:\cursorworkspace\a-trend-data
+python scripts/update_local_data.py --market-only
 ```
 
-4. 核对输出的 `bars ... -> YYYY-MM-DD`，并检查 JSON 元数据：
+`--market-only` 不读取个股和除权文件；可加 `--dry-run` 预览。`--symbol` 定向更新个股时不会更新两市汇总。末日以文件的 `last_updated` 为准；如果沪深末日不一致、重叠区间缺日或文件损坏，则保留旧汇总并报告异常，不填零拼接。最近运行报告的 `market` 字段单独给出汇总日期、写入数及耗时。
+
+## 本机输入文件
+
+- 通达信日线：`E:\new_tdx64\vipdoc\sh|sz|bj\lday\*.day`
+- 通达信除权记录：`E:\new_tdx64\T0002\hq_cache\gbbq`
+- 指南针源：`D:\Program Files\Compass\WavMain\ANALYSE\Data\ChinaStk\Z_SK\day.vdat`
+
+程序识别实际内容和日期，不要求除权文件每天改变修改时间。格式损坏、衔接日期缺失等异常会明确列出，保留相关旧缓存；其它正常文件继续更新。换电脑时必须重新配置并核对路径，不能照搬本机状态目录。
+
+## 0AMV 单独更新
+
+在指南针里完成行情更新并退出软件，然后执行：
 
 ```powershell
-python -c "import json; p=json.load(open(r'cache/compass/0AMV.json',encoding='utf-8')); print(p['last_updated'],p['bar_count'],p['bars'][-1])"
+python scripts\extract_compass_amv.py --repo-root D:\cursorworkspace\a-trend-data
 ```
 
-若读取 `day.vdat` 报 `PermissionError`，通常是指南针仍占用文件；不要绕过文件锁，先检查并
-退出上述进程。脚本每次从 `day.vdat` 全量解析并覆盖 `0AMV.json`，不是增量拼接。
+以输出末日为准。`close` 为活跃市值，`volume` 为股，`amount` 为元。通达信下载不会更新这个文件，K 线 Release 包也不包含它。
 
-`cache/compass/0AMV.json` 由 Git 跟踪，便于在仓库间同步，但不会打进
-`kline-latest.tar.zst`；需要跨机器更新时应提交并推送这个 JSON，不能只下载 Release 附件。
+## 其他说明
 
-下游回测用单独目录加载，例如 a-trend：`load("0AMV", cache_dir="../a-trend-data/cache/compass")`。不要把它和 `sh600000` 那样的个股文件混在同一目录。
-
----
-
-## 更多文档
-
-| 文档 | 用途 |
-|------|------|
-| [AGENT-HANDOFF.md](AGENT-HANDOFF.md) | AI Agent 接棒运行指南 |
+- [维护说明](AGENT-HANDOFF.md)：实现、异常处理和验证方式。
+- [可选的联网更新与发布](docs/online-pipeline.md)：旧 Java 入口与 Release 操作，不属于本机日常增量流程。
+- 本地 K 线、两市量额缓存、状态和备份不提交 Git；0AMV JSON 单独由 Git 跟踪。两市量额随下一次手动打包纳入 Release，远端现有附件不会自动改变。

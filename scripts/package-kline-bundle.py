@@ -8,13 +8,18 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-import zstandard as zstd
-
 ASSET_NAME = "kline-latest.tar.zst"
 MEMBERS = ("cache/kline", "config/stock-universe.json", "logs/fetch-log.json")
+MARKET_MEMBER = "cache/market/sh_sz_turnover.json"
+
+
+def bundle_members(root: Path) -> tuple[str, ...]:
+    return MEMBERS + ((MARKET_MEMBER,) if (root / MARKET_MEMBER).is_file() else ())
 
 
 def main() -> None:
+    import zstandard as zstd
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent.parent)
     args = parser.parse_args()
@@ -33,8 +38,11 @@ def main() -> None:
     try:
         print("==> Building tar...")
         with tarfile.open(tar_path, mode="w") as tar:
-            for member in MEMBERS:
+            members = bundle_members(root)
+            for member in members:
                 tar.add(root / member, arcname=member, recursive=True)
+            if MARKET_MEMBER not in members:
+                print(f"WARNING: {MARKET_MEMBER} is absent; bundle has no market turnover series")
 
         print("==> Compressing with zstd...")
         cctx = zstd.ZstdCompressor(level=19, threads=0)

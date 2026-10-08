@@ -10,6 +10,10 @@ java/target/
 /config/stock-universe.json
 /logs/fetch-log.json
 /logs/cron/
+/logs/local-update-latest.json
+/cache/.local-update/
+/cache/market/sh_sz_turnover.json
+__pycache__/
 /dist/
 /*.tar.zst
 
